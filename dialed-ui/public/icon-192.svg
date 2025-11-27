@@ -1,0 +1,5 @@
+<!-- Simple SVG icon for PWA -->
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" fill="#1e293b" rx="24"/>
+  <text x="96" y="120" font-family="Arial, sans-serif" font-size="80" font-weight="bold" fill="#ffffff" text-anchor="middle">D</text>
+</svg>
