@@ -1,15 +1,13 @@
 # DIALED 💪
 
-A modern, mobile-first workout tracking Progressive Web App (PWA) built with React and TypeScript.
+A modern workout tracking web application built with React and TypeScript.
 
 ## 🚀 Features
 
-- **Progressive Web App**: Install on mobile devices like a native app
 - **Real-time Workout Tracking**: Start workouts, track sets, reps, and weights
 - **Exercise Library**: Comprehensive database of exercises with categories
-- **Responsive Design**: Optimized for mobile with touch-friendly interface
-- **Offline Support**: Works without internet connection via service worker
-- **Modern UI**: Clean, intuitive design with Tailwind CSS
+- **Responsive Design**: Clean, intuitive interface
+- **Modern UI**: Built with Tailwind CSS
 
 ## 🏗️ Tech Stack
 
@@ -18,8 +16,6 @@ A modern, mobile-first workout tracking Progressive Web App (PWA) built with Rea
 - **Vite** - Build tool and dev server
 - **Tailwind CSS 3.4** - Utility-first styling
 - **React Router** - Client-side routing
-- **PWA** - Service worker, manifest, offline support
-- **Capacitor** - Native mobile app compilation
 
 ### Backend (`dialed-api/`)
 - **Node.js** - Runtime environment
@@ -84,13 +80,6 @@ npm run dev      # Start development server with nodemon
 npm start        # Start production server
 npm run build    # Compile TypeScript
 ```
-
-## 📱 PWA Installation
-
-The app can be installed on mobile devices:
-1. Open the app in a mobile browser
-2. Look for "Add to Home Screen" prompt
-3. Install for native app experience
 
 ## 🏋️ Usage
 
