@@ -14,3 +14,12 @@ yarn-error.log*
 # Env / secrets
 .env
 .env.*.local
+
+# Local credentials and verification artifacts
+.env.local
+.env.*
+!.env.example
+coverage/
+test-results/
+playwright-report/
+.tmp/

@@ -1,13 +1,17 @@
 import { defineConfig } from 'vite'
+import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Consume shared TypeScript directly in Vite; Express uses its compiled CommonJS build.
+  resolve: { alias: { '@dialed/shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)) } },
+  test: { environment: 'node', include: ['test/**/*.test.{js,jsx}'] },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icon-192.svg', 'icon-512.svg'],
       manifest: {
         name: 'Dialed - Workout Tracker',

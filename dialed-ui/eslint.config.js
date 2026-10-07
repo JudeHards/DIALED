@@ -23,6 +23,7 @@ export default defineConfig([
       },
     },
     rules: {
+      'react-refresh/only-export-components': ['error', { allowExportNames: ['useAuth', 'useTraining', 'MuscleLabels', 'PrescriptionEditor'] }],
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
