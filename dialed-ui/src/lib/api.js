@@ -1,39 +1,32 @@
+import { supabase } from './supabase';
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
-
-async function request(path, opts = {}) {
-  const url = `${BASE}${path}`;
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
+export class ApiError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+export async function request(userId, path, opts = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session || session.user.id !== userId) throw new ApiError(401, 'Sign in to sync this account’s drafts.');
+  const res = await fetch(`${BASE}/api${path}`, {
+    ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${res.status} ${res.statusText}: ${text}`);
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.error ?? `Request failed (${res.status})`);
   }
   return res.status === 204 ? null : res.json();
 }
-
-export const createWorkout = async (payload) =>
-  request('/api/workouts', { method: 'POST', body: JSON.stringify(payload) });
-
-export const getWorkouts = async () => request('/api/workouts');
-
-export const getWorkout = async (id) => request(`/api/workouts/${id}`);
-
-export const getExercises = async () => request('/api/exercises');
-
-export const getExercise = async (id) => request(`/api/exercises/${id}`);
-
-export const updateWorkout = async (id, payload) =>
-  request(`/api/workouts/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
-
-export const startWorkout = async (id) =>
-  request(`/api/workouts/${id}/start`, { method: 'POST' });
-
-export const updateExerciseSet = async (workoutId, exerciseId, setIndex, body) =>
-  request(`/api/workouts/${workoutId}/exercises/${exerciseId}/sets/${setIndex}`, {
-    method: 'PATCH',
-    body: JSON.stringify(body),
-  });
-
-export default { createWorkout, getWorkouts, getWorkout, startWorkout, updateExerciseSet, getExercises, getExercise, updateWorkout };
+export function apiFor(userId) {
+  const get = path => request(userId, path);
+  const write = (path, body, method = 'PUT') => request(userId, path, { method, body: JSON.stringify(body) });
+  return {
+    exercises: () => get('/exercises'), routines: () => get('/routines'), workouts: () => get('/workouts'),
+    workout: id => get(`/workouts/${id}`), profile: () => get('/profile'),
+    saveProfile: timezone => write('/profile', { timezone }),
+    saveRoutine: routine => write(`/routines/${routine.id}`, { routine, expectedVersion: routine.version, mutationId: crypto.randomUUID() }),
+    deleteRoutine: routine => write(`/routines/${routine.id}`, { expectedVersion: routine.version }, 'DELETE'),
+    saveWorkout: payload => write(`/workouts/${payload.workout.id}${payload.workout.status === 'completed' ? '/complete' : ''}`, payload, payload.workout.status === 'completed' ? 'POST' : 'PUT'),
+    recommendation: (id, exerciseId) => get(`/workouts/${id}/exercises/${exerciseId}/recommendation`),
+    explain: (id, exerciseId) => write(`/workouts/${id}/exercises/${exerciseId}/explanation`, {}, 'POST'),
+  };
+}

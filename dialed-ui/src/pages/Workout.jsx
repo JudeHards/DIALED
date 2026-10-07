@@ -1,201 +1,24 @@
-// src/pages/Workout.jsx
-import { useEffect, useState } from "react";
-import TopBar from "../components/TopBar";
-import Screen from "../components/Screen";
-import api from "../lib/api";
-import { Link, useNavigate } from "react-router-dom";
-
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useTraining } from '../lib/Training';
+import { MuscleLabels } from '../components/ExercisePicker';
+import { downloadJson } from '../lib/models';
+import { useCloudVersion, separateCopy, saveDraft, syncDrafts } from '../lib/offline';
 export default function Workout() {
-  const [last, setLast] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [allExercises, setAllExercises] = useState([]);
-  const [selected, setSelected] = useState(new Set());
-  const [workoutName, setWorkoutName] = useState('New Workout');
-  const [selectedMuscle, setSelectedMuscle] = useState(null);
-  const navigate = useNavigate();
-
-  // Get unique muscle groups from exercises
-  const muscleGroups = [...new Set(allExercises.map(ex => ex.primaryMuscle))].sort();
-  
-  // Filter exercises by selected muscle group
-  const filteredExercises = selectedMuscle 
-    ? allExercises.filter(ex => ex.primaryMuscle === selectedMuscle)
-    : [];
-
-  useEffect(() => {
-    api.getExercises().then(setAllExercises).catch(() => setAllExercises([]));
-  }, []);
-
-  useEffect(() => {
-    // Prefer backend data, fallback to localStorage
-    api
-      .getWorkouts()
-      .then((list) => {
-        if (!Array.isArray(list) || list.length === 0) throw new Error('no workouts');
-        // pick the most recent by createdAt
-        const sorted = list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        setLast(sorted[0]);
-      })
-      .catch(() => {
-        // Try to find any workout in localStorage
-        const keys = Object.keys(localStorage).filter(k => k.startsWith('dialed:lastWorkout:'));
-        if (keys.length === 0) return;
-        
-        try {
-          const lastKey = keys[keys.length - 1];
-          const raw = localStorage.getItem(lastKey);
-          if (!raw) return;
-          setLast(JSON.parse(raw));
-        } catch {
-          setLast(null);
-        }
-      });
-  }, []);
-
-  // Optional: quick way to begin a new session
-  const StartButton = (
-    <Link
-      to="/start-workout"
-      className="rounded-xl border border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-800/60 transition"
-    >
-      Start
-    </Link>
-  );
-
-  return (
-    <>
-      <TopBar title={last?.name ?? 'Workout'} right={StartButton} />
-      <Screen>
-        {last ? (
-          <>
-            <p className="mb-3 text-sm text-slate-400">Last completed: {new Date(last.date).toLocaleString()}</p>
-
-            <div className="space-y-3">
-              {(last.sets || []).map((s, i) => (
-                <div key={i} className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="h-8 w-8 shrink-0 rounded-xl bg-slate-800 grid place-items-center text-xs text-slate-300">{i + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-100 text-lg leading-tight">{s.name}</p>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <span className="inline-flex items-center rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-1.5 text-sm">
-                          <span className="text-xs text-slate-400 mr-2">Weight</span>
-                          <span className="font-medium">{(s.weight ?? '—')}</span>
-                        </span>
-                        <span className="inline-flex items-center rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-1.5 text-sm">
-                          <span className="text-xs text-slate-400 mr-2">Reps</span>
-                          <span className="font-medium">{(s.reps ?? '—')}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 text-center">
-            <div className="text-xl font-semibold mb-2">No workouts yet</div>
-            <div className="text-sm text-slate-400 mb-4">Start by adding exercises to create your first workout.</div>
-            <div className="flex justify-center">
-              <button onClick={() => setShowCreate(true)} className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-2">Add exercise</button>
-            </div>
-          </div>
-        )}
-      </Screen>
-
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/80">
-          <div className="w-full max-w-2xl bg-slate-950 rounded-2xl p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium">Add exercise to workout</h3>
-              <button onClick={() => setShowCreate(false)} className="text-sm">Close</button>
-            </div>
-
-            <input value={workoutName} onChange={(e) => setWorkoutName(e.target.value)} placeholder="Workout name" className="w-full mb-3 rounded px-3 py-2 bg-slate-900/60" />
-
-            {/* Muscle group selection */}
-            {!selectedMuscle && (
-              <div className="grid gap-2 max-h-[60vh] overflow-auto mb-4">
-                <div className="text-sm text-slate-400 mb-2">Select muscle group:</div>
-                {muscleGroups.map((muscle) => (
-                  <button
-                    key={muscle}
-                    onClick={() => setSelectedMuscle(muscle)}
-                    className="flex items-center gap-3 p-4 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-900/70 text-left transition"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium capitalize">{muscle}</div>
-                      <div className="text-xs text-slate-400 mt-1">
-                        {allExercises.filter(ex => ex.primaryMuscle === muscle).length} exercises
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Exercise selection */}
-            {selectedMuscle && (
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm text-slate-400">
-                    Select exercises for <span className="text-white capitalize">{selectedMuscle}</span>:
-                  </div>
-                  <button 
-                    onClick={() => setSelectedMuscle(null)} 
-                    className="text-sm text-slate-500 hover:text-slate-300"
-                  >
-                    ← Back to muscle groups
-                  </button>
-                </div>
-
-                <div className="grid gap-2 max-h-[50vh] overflow-auto mb-4">
-                  {filteredExercises.map((ex) => (
-                    <label key={ex.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-800 hover:bg-slate-900/50">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(ex.id)}
-                        onChange={(e) => {
-                          const next = new Set(selected);
-                          if (e.target.checked) next.add(ex.id); else next.delete(ex.id);
-                          setSelected(next);
-                        }}
-                        className="h-4 w-4 rounded border-slate-700"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium">{ex.name}</div>
-                        {ex.equipment && (
-                          <div className="text-xs text-slate-400 mt-0.5">
-                            Equipment: {ex.equipment}
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button className="rounded px-3 py-2 bg-slate-800" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="rounded px-3 py-2 bg-blue-600 text-white" onClick={async () => {
-                const ids = Array.from(selected);
-                if (!workoutName || ids.length === 0) return alert('Please provide a name and select exercises');
-                const payload = { name: workoutName, description: '', exercises: ids };
-                try {
-                  const res = await api.createWorkout(payload);
-                  setShowCreate(false);
-                  navigate(`/start-workout/${res.id}`);
-                } catch (err) {
-                  alert('Failed to create workout: ' + String(err));
-                }
-              }}>Create workout</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  const { id } = useParams(); const { rows, ready, userId, api } = useTraining(); const navigate = useNavigate(); const [error, setError] = useState('');
+  const list = rows.filter(r => r.workout.status === 'completed').sort((a,b) => b.workout.completedAt.localeCompare(a.workout.completedAt));
+  if (id) {
+    const row = rows.find(r => r.id === id); const workout = row?.workout;
+    if (!workout) return <p className="notice">{ready ? 'Workout not found. Sync your account or return to History.' : 'Loading…'}</p>;
+    async function resolve(copy) {
+      try { if (copy) { const next = separateCopy(workout); await saveDraft(userId, next); await useCloudVersion(userId, id, api); void syncDrafts(userId, api); navigate(`/workout/${next.id}`); } else await useCloudVersion(userId, id, api); } catch (err) { setError(err.message); }
+    }
+    return <><Link className="text-button" to="/workout">← History</Link><div className="page-heading"><div className="eyebrow">{workout.status === 'completed' ? 'WORK PUT IN' : 'SESSION DRAFT'}</div><h1>{workout.name}</h1><p>{new Date(workout.completedAt ?? workout.startedAt).toLocaleString()}</p></div><div className="notice">{row.state === 'synced' ? 'Saved to your account.' : 'Saved on this device. Waiting to sync.'}{row.error && <p>{row.error}</p>}</div>{error && <p className="notice error">{error}</p>}
+      {row.state === 'conflict' && <div className="row wrap"><button className="button" onClick={() => resolve(false)}>Use cloud version</button><button className="button" onClick={() => resolve(true)}>Save local as separate session</button></div>}
+      {row.state !== 'synced' && <button className="text-button" onClick={() => downloadJson(workout, 'dialed-workout.json')}>Download local copy</button>}
+      {workout.status === 'in_progress' && <Link className="button primary" to={`/start-workout/${id}`}>Continue workout</Link>}
+      <div className="stack section-gap">{workout.exercises.map(e => <section className="panel" key={e.id}><h2>{e.snapshot.name}</h2><MuscleLabels exercise={e.snapshot}/><p className="muted small-text">Target: {e.prescription.workingSets} sets × {e.prescription.repMin}–{e.prescription.repMax} reps</p><table className="set-table"><thead><tr><th>Set</th><th>kg</th><th>Reps</th><th>RIR</th><th>Status</th></tr></thead><tbody>{e.sets.map((s,i) => <tr key={s.id}><td>{i + 1}{s.warmup ? ' · W' : ''}</td><td>{s.weight ?? '—'}</td><td>{s.reps ?? '—'}</td><td>{s.rir ?? '—'}</td><td>{s.completed ? '✓' : 'Skipped'}</td></tr>)}</tbody></table></section>)}</div>
+    </>;
+  }
+  return <><div className="page-heading"><div className="eyebrow">YOUR CONSISTENCY, RECORDED</div><h1>Workout history</h1><p>Every session is a step you can build on.</p></div><div className="stack">{list.length ? list.map(row => <Link className="panel history-card" key={row.id} to={`/workout/${row.id}`}><div><div className="eyebrow">{new Date(row.workout.completedAt).toLocaleDateString(undefined,{ day:'numeric', month:'short', year:'numeric' })}</div><h2>{row.workout.name}</h2><p className="muted">{row.workout.exercises.length} exercises · {row.workout.exercises.flatMap(e => e.sets).filter(s => s.completed && !s.warmup).length} working sets{row.state !== 'synced' ? ' · On device' : ''}</p></div><span>↗</span></Link>) : <div className="empty"><h2>Your first session is ahead</h2><p>Complete a workout to see your history here.</p><Link className="button primary" to="/start-workout">Start a session</Link></div>}</div></>;
 }

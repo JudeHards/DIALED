@@ -1,62 +1,18 @@
-// src/pages/Welcome.jsx
-import { Link } from "react-router-dom";
-import TopBar from "../components/TopBar";
-import Screen from "../components/Screen";
-import { Play, ListChecks, Dumbbell, ChevronRight } from "lucide-react";
-
+import { Link } from 'react-router-dom';
+import { weeklySummary } from '@dialed/shared';
+import { useTraining } from '../lib/Training';
 export default function Welcome() {
-  return (
-    <>
-      <TopBar title="Welcome" />
-      <Screen>
-        {/* Hero - sleek / gritty */}
-        <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 p-8 shadow-lg">
-          <h1 className="text-4xl font-extrabold tracking-tight text-slate-100">Dialed</h1>
-          <div className="mt-3 h-0.5 w-14 rounded bg-blue-700/60" />
-          <p className="mt-3 text-xs uppercase tracking-wider text-slate-400">
-            Your training, simplified.
-          </p>
-        </section>
-
-        {/* Actions */}
-        <section className="mt-6 grid gap-3">
-          <ActionCard
-            to="/start-workout"
-            title="Start a session"
-            desc="Pick a routine and begin"
-          />
-          <ActionCard
-            to="/routines"
-            title="Manage routines"
-            desc="Create, edit, and organize"
-          />
-          <ActionCard
-            to="/workout"
-            title="View workout"
-            desc="See exercise details"
-          />
-        </section>
-      </Screen>
-    </>
-  );
-}
-
-function ActionCard({ to, title, desc, accent = false }) {
-  return (
-    <Link
-      to={to}
-      className={[
-        "group flex items-center justify-between rounded-2xl border px-4 py-4 transition",
-        accent
-          ? "border-emerald-700/60 bg-emerald-600/15 hover:bg-emerald-600/25"
-          : "border-slate-800 bg-slate-900/60 hover:bg-slate-900/80",
-      ].join(" ")}
-    >
-      <div>
-        <div className="font-medium text-slate-100">{title}</div>
-        <div className="text-sm text-slate-400">{desc}</div>
-      </div>
-      <ChevronRight className="h-5 w-5 text-slate-500 group-hover:text-slate-300 transition" />
-    </Link>
-  );
+  const { rows, timezone, routines } = useTraining();
+  const history = rows.map(r => r.workout); const summary = weeklySummary(history, timezone);
+  const active = rows.filter(r => r.workout.status === 'in_progress');
+  const completed = history.filter(w => w.status === 'completed');
+  const total = summary.counts.reduce((n,c) => n + c.primarySets,0); const max = Math.max(1,...summary.counts.map(c => c.primarySets + c.secondarySets));
+  return <><section className="hero"><div className="eyebrow">YOUR TRAINING, SIMPLIFIED</div><h1>Build on<br/><em>your last rep.</em></h1><p>Your log. Your progress. A clearer plan for what comes next.</p><Link className="button primary" to="/start-workout">Start a session <span>↗</span></Link><div className="hero-mark" aria-hidden="true">D/</div></section>
+    <div className="stats"><div><strong>{total}</strong><span>working sets this week</span></div><div><strong>{completed.length}</strong><span>sessions logged</span></div><div><strong>{routines.length}</strong><span>saved routines</span></div></div>
+    {active.length > 0 && <section className="section-gap"><div className="section-title"><h2>Pick up where you left off</h2></div><div className="stack">{active.map(row => <Link className="panel history-card" key={row.id} to={`/start-workout/${row.id}`}><div><h3>{row.workout.name}</h3><p className="muted">{row.state === 'conflict' ? 'Needs review · local draft retained' : `${row.workout.exercises.length} exercises · In progress`}</p></div><span>↗</span></Link>)}</div></section>}
+    <section className="panel section-gap"><div className="section-title"><div><div className="eyebrow">MONDAY–SUNDAY</div><h2>Muscles this week</h2></div><span className="week-date">{summary.start}</span></div><div className="legend"><span><i className="primary-dot"/>Primary target</span><span><i className="secondary-dot"/>Secondary involvement</span></div>
+      <div className="muscle-chart">{summary.counts.map(c => <div key={c.muscle} className="muscle-chart-row"><span>{c.muscle}</span><div className="bar-track" aria-hidden="true"><div className="bar-primary" style={{width:`${c.primarySets/max*100}%`}}/><div className="bar-secondary" style={{width:`${c.secondarySets/max*100}%`}}/></div><span aria-label={`${c.primarySets} primary sets, ${c.secondarySets} secondary sets`}>{c.primarySets} <small>/ {c.secondarySets}</small></span></div>)}</div>
+      <p className="muted small-text">Completed working sets, grouped by exercise targets. These counts describe training involvement, not measured muscle activation. {timezone}.</p>
+    </section><div className="row wrap section-gap"><Link className="button" to="/routines">Manage routines →</Link><Link className="button" to="/workout">View history →</Link></div>
+  </>;
 }

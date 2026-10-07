@@ -1,138 +1,41 @@
-import TopBar from "../components/TopBar";
-import Screen from "../components/Screen";
-import { Link } from "react-router-dom";
-import { useState } from "react";
-import ExerciseList from "../components/ExerciseList";
-import { useEffect } from "react";
-import api from "../lib/api";
-import { useNavigate } from "react-router-dom";
-
-const routines = [
-  { name: "Push Day", desc: "Chest, shoulders, triceps" },
-  { name: "Pull Day", desc: "Back, biceps" },
-  { name: "Legs", desc: "Quads, hams, glutes" },
-  { name: "Upper", desc: "Compound focus" },
-  { name: "Full Body", desc: "Balanced split" },
-];
-
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { routineSchema } from '@dialed/shared';
+import { useTraining } from '../lib/Training';
+import { cached, saveDraft, syncDrafts } from '../lib/offline';
+import { newWorkout, routineExercise } from '../lib/models';
+import ExercisePicker, { MuscleLabels } from '../components/ExercisePicker';
+import { PrescriptionEditor } from '../components/SetEditor';
 export default function Routines() {
-  const [showExercises, setShowExercises] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
-  const [allExercises, setAllExercises] = useState([]);
-  const [selected, setSelected] = useState(new Set());
-  const [workoutName, setWorkoutName] = useState('');
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    api.getExercises().then(setAllExercises).catch(() => setAllExercises([]));
-  }, []);
-  return (
-    <>
-      <TopBar title="Routines" />
-      <Screen>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-lg font-medium">Saved routines</div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowCreate(true)}
-              className="text-sm rounded px-3 py-1 border border-slate-700 bg-slate-900/60"
-            >
-              Create workout
-            </button>
-            <button
-              onClick={() => setShowExercises((s) => !s)}
-              className="text-sm rounded px-3 py-1 border border-slate-700 bg-slate-900/60"
-            >
-              {showExercises ? 'Hide exercises' : 'Show exercises'}
-            </button>
-          </div>
-        </div>
-
-        {!showExercises ? (
-          <div className="grid gap-3">
-            {routines.map((r) => (
-              <Link
-                key={r.name}
-                to="/workout"
-                className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 hover:bg-slate-900 transition"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-slate-400">{r.desc}</div>
-                  </div>
-                  <span className="text-slate-500">›</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-slate-900/80">
-            <div className="w-full max-w-5xl overflow-auto">
-              <div className="flex justify-end mb-4">
-                <button
-                  onClick={() => setShowExercises(false)}
-                  className="rounded px-3 py-2 bg-slate-800 text-sm"
-                >
-                  Close
-                </button>
-              </div>
-              <ExerciseList />
-            </div>
-          </div>
-        )}
-      </Screen>
-
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/80">
-          <div className="w-full max-w-2xl bg-slate-950 rounded-2xl p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium">Create workout</h3>
-              <button onClick={() => setShowCreate(false)} className="text-sm">Close</button>
-            </div>
-
-            <input value={workoutName} onChange={(e) => setWorkoutName(e.target.value)} placeholder="Workout name" className="w-full mb-3 rounded px-3 py-2 bg-slate-900/60" />
-
-            <div className="grid gap-2 max-h-60 overflow-auto mb-4">
-              {allExercises.map((ex) => (
-                <label key={ex.id} className="flex items-center gap-3 p-2 rounded hover:bg-slate-900/50">
-                  <input type="checkbox" checked={selected.has(ex.id)} onChange={(e) => {
-                    const next = new Set(selected);
-                    if (e.target.checked) next.add(ex.id); else next.delete(ex.id);
-                    setSelected(next);
-                  }} />
-                  <div>
-                    <div className="font-medium">{ex.name}</div>
-                    <div className="text-xs text-slate-400">{ex.primaryMuscle}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button className="rounded px-3 py-2 bg-slate-800" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="rounded px-3 py-2 bg-blue-600 text-white" onClick={async () => {
-                const ids = Array.from(selected);
-                if (!workoutName || ids.length === 0) return alert('Please provide a name and select exercises');
-                // Build payload: create a workout template with exercise ids
-                const payload = {
-                  name: workoutName,
-                  description: '',
-                  exercises: ids.map(id => ({ id })),
-                };
-                // For now, POST as a workout to /api/workouts
-                try {
-                  const res = await api.createWorkout(payload);
-                  setShowCreate(false);
-                  navigate(`/start-workout/${res.id}`);
-                } catch (err) {
-                  alert('Failed to create workout: ' + String(err));
-                }
-              }}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  const { catalog, routines, userId, api, refresh, online } = useTraining();
+  const navigate = useNavigate(); const [editing, setEditing] = useState(null); const [picker, setPicker] = useState(false); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [deleting, setDeleting] = useState(null);
+  async function start(routine) {
+    try { const workout = newWorkout(routine, catalog); await saveDraft(userId, workout); void syncDrafts(userId, api); navigate(`/start-workout/${workout.id}`); } catch (err) { setError(err.message); }
+  }
+  async function save(event) {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const parsed = routineSchema.safeParse(editing);
+      if (!parsed.success) throw new Error(parsed.error.issues.map(i => i.message).join('; '));
+      const saved = await api.saveRoutine(parsed.data);
+      await cached(userId, 'routines', [...routines.filter(r => r.id !== saved.id), saved]);
+      setEditing(null); await refresh();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+  async function remove(routine) {
+    setBusy(true); try { await api.deleteRoutine(routine); await cached(userId, 'routines', routines.filter(r => r.id !== routine.id)); setDeleting(null); await refresh(); } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+  if (editing) return <><div className="page-heading"><div className="eyebrow">YOUR TRAINING PLAN</div><h1>{editing.version ? 'Edit routine' : 'Build a routine'}</h1><p>Set your targets. Make the next session easy to start.</p></div>
+    <form onSubmit={save} className="stack"><label>Routine name<input required maxLength={120} value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })}/></label>
+      {editing.exercises.map((item, index) => { const exercise = catalog.find(e => e.id === item.exerciseId); return <section className="panel stack" key={item.id}><div className="row between"><h2>{exercise?.name}</h2><button type="button" className="text-button" onClick={() => setEditing({ ...editing, exercises: editing.exercises.filter(e => e.id !== item.id) })}>Remove</button></div>{exercise && <MuscleLabels exercise={exercise}/>}<PrescriptionEditor value={item.prescription} onChange={prescription => setEditing({ ...editing, exercises: editing.exercises.map((e, i) => i === index ? { ...e, prescription } : e) })}/></section>; })}
+      <button type="button" className="button dashed" onClick={() => setPicker(true)}>+ Add exercise</button>
+      {error && <p className="notice error" role="alert">{error}</p>}
+      {!online && <p className="notice">Routine editing needs a connection. Your edits remain on this screen.</p>}
+      <div className="row"><button type="button" className="button" onClick={() => { setEditing(null); setError(''); }}>Cancel</button><button className="button primary" disabled={busy || !online}>{busy ? 'Saving…' : 'Save routine'}</button></div>
+    </form>{picker && <ExercisePicker catalog={catalog} onClose={() => setPicker(false)} onAdd={items => setEditing({ ...editing, exercises: [...editing.exercises, ...items.map(routineExercise)] })}/>}</>;
+  return <><div className="page-heading"><div className="eyebrow">BUILT AROUND YOU</div><h1>Your routines</h1><p>A familiar plan. A fresh session every time.</p></div>
+    <button className="button primary" onClick={() => { setError(''); setEditing({ id: crypto.randomUUID(), name: '', version: 0, exercises: [] }); }}>+ Create routine</button>
+    {error && <p className="notice error" role="alert">{error}</p>}
+    <div className="stack section-gap">{routines.length ? routines.map(r => <section className="panel" key={r.id}><div className="eyebrow">{r.exercises.length} EXERCISES</div><h2>{r.name}</h2><p className="muted routine-preview">{r.exercises.map(e => catalog.find(c => c.id === e.exerciseId)?.name).join(' · ')}</p><div className="row wrap"><button className="button primary" onClick={() => start(r)}>Start session ↗</button><button className="text-button" onClick={() => { setError(''); setEditing(structuredClone(r)); }}>Edit</button><button className="text-button" onClick={() => setDeleting(r.id)}>Delete</button></div>{deleting === r.id && <div className="notice"><p>Delete this routine? Your workout history will remain.</p><div className="row"><button className="button" disabled={busy || !online} onClick={() => remove(r)}>Delete routine</button><button className="text-button" onClick={() => setDeleting(null)}>Keep routine</button></div></div>}</section>) : <div className="empty"><span className="empty-symbol">＋</span><h2>Make it your routine</h2><p>Choose exercises and rep targets, then reuse your plan each session.</p></div>}</div>
+  </>;
 }
