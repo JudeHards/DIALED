@@ -1,0 +1,20 @@
+{
+  "name": "dialed",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "dialed-api",
+    "dialed-ui"
+  ],
+  "scripts": {
+    "build": "npm run build -w @dialed/shared && npm run build -w dialed-api && npm run build -w dialed-ui",
+    "dev:api": "npm run build -w @dialed/shared && npm run dev -w dialed-api",
+    "dev:ui": "npm run build -w @dialed/shared && npm run dev -w dialed-ui",
+    "lint": "npm run lint -w dialed-api && npm run lint -w dialed-ui",
+    "test": "npm run build -w @dialed/shared && npm run test -w dialed-api && npm run test -w dialed-ui",
+    "check": "npm run build && npm run lint && npm test"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
