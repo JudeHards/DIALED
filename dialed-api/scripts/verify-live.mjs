@@ -16,8 +16,10 @@ if (!url || !secret || !key) throw new Error('Configure .env.test.local and dial
 const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
 const users = [];
 let server;
-const base = 'http://127.0.0.1:3100/api';
+const base = process.env.LIVE_API_BASE || 'http://127.0.0.1:3100/api';
+const remote = Boolean(process.env.LIVE_API_BASE);
 async function start() {
+  if (remote) return;
   server = spawn(process.execPath, ['dialed-api/dist/index.js'], { env: { ...process.env, PORT: '3100' }, stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise((resolve, reject) => { server.stdout.once('data', resolve); server.once('error', reject); server.once('exit', code => reject(new Error(`API exited: ${code}`))); });
 }
@@ -83,7 +85,7 @@ try {
   await stop(); await start();
   assert.equal((await request(a, '/workouts')).length, 3);
   assert.equal((await request(a, `/workouts/${saved.id}`)).status, 'completed');
-  console.log('PASS live Supabase: auth, catalogue, atomic saves, retry/conflict, zero weights, completion, RLS isolation, routines, progression, explanation, summary, and API restart persistence.');
+  console.log('PASS live Supabase: auth, catalogue, atomic saves, retry/conflict, zero weights, completion, RLS isolation, routines, progression, explanation and summary.' + (remote ? ' Verified hosted API.' : ' Verified API restart persistence.'));
   if (process.env.KEEP_BROWSER_TEST_USER === '1') {
     await writeFile('.tmp/browser-test-user.json', JSON.stringify({ id: a.id, email: a.email, password: a.password }), { mode: 0o600 });
     a.keep = true;

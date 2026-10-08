@@ -1,5 +1,9 @@
 # Dialed
 
+Live app: https://dialed-jude.onrender.com
+
+On iPhone: open that link in Safari → Share → Add to Home Screen.
+
 An installable workout log: React/Vite frontend, Express/TypeScript API, shared Zod contracts, and Supabase Postgres/Auth. Weights are kilograms; dumbbell weights are per dumbbell.
 
 ## What is implemented
@@ -67,3 +71,7 @@ For a manual deployment, use the repository root, Node 22, build command `npm ci
 After Render assigns the HTTPS URL, set that address as the Supabase Auth Site URL and add `https://YOUR-SERVICE.onrender.com/**` to Redirect URLs, preserving local development entries. Open the live URL in Safari on iPhone, tap **Share → Add to Home Screen**, enable **Open as Web App** if shown, and tap **Add**. The app includes PNG install icons and notch/home-indicator spacing. Open it online at least once to cache the app for offline logging.
 
 Render's free web service sleeps after 15 minutes without traffic, so the first request after inactivity can take about a minute. Local drafts remain available when the installed app has been cached, and saves retry when the API is available again. This configuration does not buy a paid plan or require your Mac to stay on.
+
+Live hosting: Render service `dialed-jude` (`srv-db3r6ilg1s2s73bhtip0`), Frankfurt, Free plan. The service uses the public GitHub repository. For updates, verify GitHub CI first, then use Render → Manual Deploy → Deploy latest commit if a deployment has not been triggered automatically. No paid services were provisioned.
+
+To run the same isolated verification against the hosted API instead of a local test server, set `LIVE_API_BASE=https://dialed-jude.onrender.com/api` when running `dialed-api/scripts/verify-live.mjs`. Remote mode checks hosted saving and ownership without restarting the deployed service.
