@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useTraining } from '../lib/Training';
 import { MuscleLabels } from '../components/ExercisePicker';
 import { downloadJson } from '../lib/models';
-import { useCloudVersion, separateCopy, saveDraft, syncDrafts } from '../lib/offline';
+import { adoptCloudVersion, separateCopy, saveDraft, syncDrafts } from '../lib/offline';
 export default function Workout() {
   const { id } = useParams(); const { rows, ready, userId, api } = useTraining(); const navigate = useNavigate(); const [error, setError] = useState('');
   const list = rows.filter(r => r.workout.status === 'completed').sort((a,b) => b.workout.completedAt.localeCompare(a.workout.completedAt));
@@ -11,7 +11,7 @@ export default function Workout() {
     const row = rows.find(r => r.id === id); const workout = row?.workout;
     if (!workout) return <p className="notice">{ready ? 'Workout not found. Sync your account or return to History.' : 'Loading…'}</p>;
     async function resolve(copy) {
-      try { if (copy) { const next = separateCopy(workout); await saveDraft(userId, next); await useCloudVersion(userId, id, api); void syncDrafts(userId, api); navigate(`/workout/${next.id}`); } else await useCloudVersion(userId, id, api); } catch (err) { setError(err.message); }
+      try { if (copy) { const next = separateCopy(workout); await saveDraft(userId, next); await adoptCloudVersion(userId, id, api); void syncDrafts(userId, api); navigate(`/workout/${next.id}`); } else await adoptCloudVersion(userId, id, api); } catch (err) { setError(err.message); }
     }
     return <><Link className="text-button" to="/workout">← History</Link><div className="page-heading"><div className="eyebrow">{workout.status === 'completed' ? 'WORK PUT IN' : 'SESSION DRAFT'}</div><h1>{workout.name}</h1><p>{new Date(workout.completedAt ?? workout.startedAt).toLocaleString()}</p></div><div className="notice">{row.state === 'synced' ? 'Saved to your account.' : 'Saved on this device. Waiting to sync.'}{row.error && <p>{row.error}</p>}</div>{error && <p className="notice error">{error}</p>}
       {row.state === 'conflict' && <div className="row wrap"><button className="button" onClick={() => resolve(false)}>Use cloud version</button><button className="button" onClick={() => resolve(true)}>Save local as separate session</button></div>}

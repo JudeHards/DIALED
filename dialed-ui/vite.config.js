@@ -7,7 +7,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   // Consume shared TypeScript directly in Vite; Express uses its compiled CommonJS build.
   resolve: { alias: { '@dialed/shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)) } },
-  test: { environment: 'node', include: ['test/**/*.test.{js,jsx}'] },
+  build: { rollupOptions: { output: { manualChunks: { supabase: ['@supabase/supabase-js'] } } } },
+  test: { environment: 'node', include: ['test/**/*.test.{js,jsx}', 'src/**/*.test.{js,jsx}'] },
   plugins: [
     react(),
     VitePWA({

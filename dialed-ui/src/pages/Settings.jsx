@@ -4,8 +4,8 @@ import { profileSchema } from '@dialed/shared';
 import { useTraining } from '../lib/Training';
 import { useAuth } from '../lib/Auth';
 import { supabase } from '../lib/supabase';
-import { cached, recoveries, saveDraft, syncDrafts } from '../lib/offline';
-import { downloadJson, legacyRecords, recoverLegacy, separateCopy } from '../lib/models';
+import { cached, recoveries, saveDraft, syncDrafts, separateCopy } from '../lib/offline';
+import { downloadJson, legacyRecords, recoverLegacy } from '../lib/models';
 export default function Settings() {
   const { timezone, userId, api, catalog, rows, refresh } = useTraining(); const { user } = useAuth(); const navigate = useNavigate();
   const [zone, setZone] = useState(timezone); const [message, setMessage] = useState(''); const [archives, setArchives] = useState([]); const [legacy] = useState(() => legacyRecords()); const [review, setReview] = useState(null);
