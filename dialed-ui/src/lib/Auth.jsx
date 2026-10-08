@@ -5,21 +5,27 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [recovery, setRecovery] = useState(false);
+  const [authError, setAuthError] = useState('');
   useEffect(() => {
     if (!supabase) return;
-    let active = true;
-    supabase.auth.getSession().then(({ data }) => { if (active) { setSession(data.session); setLoading(false); } });
+    let active = true; let authChanged = false;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active || authChanged) return;
+      setSession(data?.session ?? null); setLoading(false);
+      if (error) setAuthError(error.message);
+    }).catch(error => { if (active && !authChanged) { setAuthError(error.message); setLoading(false); } });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, next) => {
-      setSession(next); setLoading(false); if (event === 'PASSWORD_RECOVERY') setRecovery(true);
+      if (!active) return;
+      authChanged = true; setAuthError(''); setSession(next); setLoading(false); if (event === 'PASSWORD_RECOVERY') setRecovery(true);
       if (event === 'SIGNED_OUT') setRecovery(false);
     });
     return () => { active = false; subscription.unsubscribe(); };
   }, []);
-  return <AuthContext.Provider value={{ session, user: session?.user, loading, recovery, setRecovery }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ session, user: session?.user, loading, recovery, setRecovery, authError }}>{children}</AuthContext.Provider>;
 }
 export function useAuth() { return useContext(AuthContext); }
 export function AuthScreen() {
-  const { recovery, setRecovery } = useAuth();
+  const { recovery, setRecovery, authError } = useAuth();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
   const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
@@ -41,7 +47,7 @@ export function AuthScreen() {
     <form onSubmit={submit} className="panel stack"><h2>{recovery ? 'Choose a new password' : mode === 'signup' ? 'Create your account' : mode === 'reset' ? 'Reset your password' : 'Welcome back'}</h2>
       {!recovery && <label>Email<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)}/></label>}
       {(recovery || mode !== 'reset') && <label>Password<input type="password" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={e => setPassword(e.target.value)}/></label>}
-      {message && <p className="notice" role="status">{message}</p>}
+      {(message || authError) && <p className="notice" role="status">{message || authError}</p>}
       <button className="button primary" disabled={busy}>{busy ? 'Please wait…' : recovery ? 'Update password' : mode === 'signup' ? 'Create account' : mode === 'reset' ? 'Send reset link' : 'Sign in'}</button>
       {!recovery && <div className="row wrap">{['login','signup','reset'].filter(m => m !== mode).map(m => <button className="text-button" type="button" key={m} onClick={() => { setMode(m); setMessage(''); }}>{m === 'login' ? 'Sign in' : m === 'signup' ? 'Create account' : 'Forgot password?'}</button>)}</div>}
     </form></main>;
