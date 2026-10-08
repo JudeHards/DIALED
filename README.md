@@ -1,57 +1,59 @@
-# DIALED
+# Dialed
 
-Workout tracking app built with React and TypeScript.
+An installable workout log: React/Vite frontend, Express/TypeScript API, shared Zod contracts, and Supabase Postgres/Auth. Weights are kilograms; dumbbell weights are per dumbbell.
 
-## Features
+## What is implemented
 
-- Track workouts with sets, reps, and weights
-- Exercise database with categories
-- Clean web interface
+- Email/password accounts, verification, password recovery, and sign-out.
+- Reusable routines and independent workout sessions, editable prescriptions, completed sets, optional reps in reserve, warm-ups, and history/detail views.
+- Durable, account-owned database records with row-level security. Atomic saves use stable mutation IDs and optimistic versions; completing a workout updates the same session.
+- Account-scoped IndexedDB drafts, cached data, reconnect/startup retries, and conflict recovery. Legacy local-storage records remain untouched and require reviewed import in Settings.
+- A 33-exercise catalogue with primary/secondary muscle snapshots. Weekly summaries count completed working sets in completed sessions separately for primary targets and secondary involvement, Monday–Sunday in the saved timezone. These are set counts, not measured activation.
+- Deterministic next-session load recommendations with explicit Apply. Two comparable sessions are required for progression; mixed weights and bodyweight do not receive automatic adjustments. Optional OpenAI explanations cannot change numeric decisions and fail back to the rule explanation.
 
-## Tech Stack
+## Local setup
 
-**Frontend:**
-- React 19
-- Vite
-- Tailwind CSS
-- React Router
+Use Node 22.13 or newer and npm. Run all installation commands from the repository root:
 
-**Backend:**
-- Node.js
-- Express
-- TypeScript
-
-## Development
-
-Clone and install:
-```bash
-git clone https://github.com/JudeHards/DIALED.git
-cd DIALED
-
-# Install frontend deps
-cd dialed-ui && npm install
-
-# Install backend deps  
-cd ../dialed-api && npm install
+```sh
+npm ci
+cp dialed-api/.env.example dialed-api/.env
+cp dialed-ui/.env.example dialed-ui/.env.local
 ```
 
-Run both servers:
-```bash
-# Backend (port 3000)
-cd dialed-api && npm run dev
+Set both Supabase URLs and publishable keys to the same project. The frontend uses `VITE_` variables; the API does not. Publishable keys are intended for clients, but never put a Supabase secret/service-role key or OpenAI key in frontend configuration. Environment files are ignored by Git.
 
-# Frontend (port 5173) 
-cd dialed-ui && npm run dev
+In a new Supabase project's SQL Editor, run the SQL files in `supabase/migrations/` in filename order, then `supabase/seed.sql`. The migration creates the tables, ownership policies, and atomic save functions. Apply it once; it is not a reset script. For CLI-managed projects use `supabase db push` followed by the seed via your normal migration workflow. Regenerate catalogue seed SQL with `npm run seed:generate` when the shared catalogue changes.
+
+In Supabase Authentication → URL Configuration, set Site URL to `http://localhost:5173` for local development and allow `http://localhost:5173/**` for verification and password-reset callbacks. If using `127.0.0.1`, add that origin too. Keep email confirmation enabled. Production needs its own HTTPS URLs and a configured mail provider for dependable email delivery.
+
+Start each server in a separate terminal:
+
+```sh
+npm run dev:api
+npm run dev:ui
 ```
 
-Open http://localhost:5173
+Open http://localhost:5173. The API defaults to port 3000. `APP_ORIGINS` controls allowed frontend origins. Restart Vite after changing its environment. Create an account and follow the verification email, or use a dedicated test account in your development Supabase project.
 
-## Scripts
+For optional AI explanations, set both `OPENAI_API_KEY` and `OPENAI_MODEL` on the API server. Select a model supporting Responses Structured Outputs. No OpenAI credentials are needed for logging or rule-based recommendations. Only relevant performance and the calculated decision are sent; no account identity or free-text notes are sent.
 
-Frontend:
-- `npm run dev` - dev server
-- `npm run build` - build for production
+## Verification
 
-Backend:
-- `npm run dev` - dev server  
-- `npm run build` - compile TypeScript
+```sh
+npm run check
+```
+
+This builds all three workspaces, lints the API/frontend, and runs the tests. CI repeats the same command after a clean `npm ci`. Tests cover progression and week boundaries; PostgreSQL saves, RLS and restart persistence using PGlite; authenticated routes and AI fallbacks; account-separated IndexedDB queues, retries/conflicts; and session/set editor interactions. No live credentials are needed for the automated suite. Live Supabase and browser smoke checks are separate from the isolated suite.
+
+## Saving and recovery
+
+The API verifies the bearer token and uses that user's Supabase access for all queries. Routine starts copy the prescription into a separate session. Exercise snapshots preserve history when catalogue metadata changes. Versions reject conflicting device saves, and repeated mutation IDs replay their original result without duplicating a workout. Completed sessions are read-only.
+
+The UI first saves sessions in IndexedDB, then syncs while signed in on launch, reconnect, focus, and periodic retries. A routine save interrupted after submission can also be retried with its original mutation ID. Routines and preferences require connectivity. Expired authentication preserves drafts for the same account; switching accounts does not expose another account's queue. Conflict controls retain an archive before choosing the cloud version, keeping local edits, or making a separate copy. Settings provides exports and reviewed recovery of earlier local-storage records.
+
+Install/open the production web app online before expecting offline access. Initial sign-in and uncached data require the network. Clearing browser storage removes unsynced drafts. Keep the tab open to sync; background sync while the app is closed is not implemented. Service-worker updates are registered through the Vite PWA plugin only.
+
+The API records AI latency/fallback events, and the frontend records sync failure categories, without workout payloads. AI cache/rate limits are per API process; use shared infrastructure before horizontally scaling. Database backups, production hosting, native packaging, and public deployment are outside this change.
+
+For an opt-in live smoke test, create an ignored `.env.test.local` at the repository root with `SUPABASE_URL` and `SUPABASE_SECRET_KEY`, and configure the publishable key in `dialed-api/.env`. After `npm run build`, run `node dialed-api/scripts/verify-live.mjs`. It creates two disposable confirmed users, checks real API saves and account isolation, restarts a test API on port 3100, and deletes its test accounts. Use a development project. The privileged key is used only by this verification script, never by the running app. Remove the private test configuration after use.
