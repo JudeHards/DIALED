@@ -10,7 +10,7 @@ export function recommend(exercise: SessionExercise, history: Workout[]): Recomm
     if (matches.length !== 1) return [];
     const e = matches[0];
     const working = e.sets.filter(s => !s.warmup);
-    if (working.length !== e.prescription.workingSets || working.some(s => !s.completed || s.weight === null || s.reps === null)) return [];
+    if (working.length !== e.prescription.workingSets || working.some(s => s.weight === null || s.reps === null)) return [];
     return [{ w, e, working }];
   }).slice(0, 2);
   if (!candidates.length) return result;

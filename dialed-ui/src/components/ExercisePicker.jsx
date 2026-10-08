@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { muscles } from '@dialed/shared';
 
 export function MuscleLabels({ exercise }) {
-  return <div className="muscle-labels"><span aria-label={`Primary muscle: ${exercise.primaryMuscle}`}>{exercise.primaryMuscle}</span>{exercise.secondaryMuscles.length > 0 && <small>Also {exercise.secondaryMuscles.join(', ')}</small>}</div>;
+  return <div className="muscle-labels"><span aria-label={`Primary muscle: ${exercise.primaryMuscle}`}>{exercise.primaryMuscle}</span>{exercise.secondaryMuscles.map(muscle => <span className="secondary-muscle" key={muscle} aria-label={`Secondary muscle: ${muscle}`}>{muscle}</span>)}</div>;
 }
 
 export default function ExercisePicker({ catalog, onAdd, onClose, limit = 50 }) {

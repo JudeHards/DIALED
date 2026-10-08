@@ -15,7 +15,7 @@ export function weeklySummary(history: Workout[], timezone: string, now = new Da
     const day = localDate(new Date(w.completedAt), timezone);
     if (day < start || day >= endExclusive) continue;
     for (const e of w.exercises) {
-      const count = e.sets.filter(s => s.completed && !s.warmup).length;
+      const count = e.sets.filter(s => s.weight !== null && s.reps !== null && !s.warmup).length;
       for (const item of counts) {
         if (e.snapshot.primaryMuscle === item.muscle) item.primarySets += count;
         else if (e.snapshot.secondaryMuscles.includes(item.muscle)) item.secondarySets += count;

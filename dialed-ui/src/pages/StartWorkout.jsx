@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { workoutSchema } from '@dialed/shared';
 import { useTraining } from '../lib/Training';
 import { draft, saveDraft, syncDrafts, adoptCloudVersion, separateCopy } from '../lib/offline';
-import { emptySet, newWorkout, sessionExercise, downloadJson } from '../lib/models';
+import { emptySet, isSetComplete, newWorkout, sessionExercise, downloadJson } from '../lib/models';
 import ExercisePicker, { MuscleLabels } from '../components/ExercisePicker';
 import SetEditor, { PrescriptionEditor } from '../components/SetEditor';
 import Recommendation from '../components/Recommendation';
@@ -104,7 +104,8 @@ export default function StartWorkout() {
     setBusy(true); setError('');
     try {
       await queue.current;
-      const value = workoutSchema.parse({ ...current.current, status: 'completed', completedAt: new Date().toISOString() });
+      const value = workoutSchema.parse({ ...current.current, status: 'completed', completedAt: new Date().toISOString(),
+        exercises: current.current.exercises.map(exercise => ({ ...exercise, sets: exercise.sets.map(set => ({ ...set, completed: isSetComplete(set) })) })) });
       // Persist the entire latest value again, including any earlier failed device save.
       await saveDraft(userId, value);
       storageFailed.current = false;
@@ -139,7 +140,7 @@ export default function StartWorkout() {
   if (workout.status === 'completed') return <div className="panel stack"><h1>Session complete</h1><p>Your completed session is read-only.</p><Link className="button" to={`/workout/${workout.id}`}>View workout</Link></div>;
 
   const sets = workout.exercises.flatMap(exercise => exercise.sets).filter(set => !set.warmup);
-  const completedSets = sets.filter(set => set.completed).length;
+  const completedSets = sets.filter(isSetComplete).length;
   const savedMessage = storageFailed.current ? 'Device save needs attention' : pendingWrites ? 'Saving to this device…' : row?.state === 'conflict' ? 'Your local draft is safe · review required' : row?.state === 'synced' ? 'Saved to your account' : 'Saved on this device · sync pending';
   return <>
     <div className="page-heading"><div className="eyebrow">SHOW UP. PUT IN THE WORK.</div><h1>In session</h1><p role="status" aria-live="polite">{savedMessage}</p></div>
@@ -153,15 +154,15 @@ export default function StartWorkout() {
         <h2>{exercise.snapshot.name}</h2><MuscleLabels exercise={exercise.snapshot}/>
         <p className="muted small-text">{exercise.snapshot.equipment === 'dumbbell' ? 'Log kg per dumbbell.' : exercise.snapshot.equipment === 'bodyweight' ? 'Log added weight; use 0 kg for bodyweight.' : 'Log the total working weight in kg.'}</p>
         <details className="targets"><summary>{exercise.prescription.workingSets ?? '—'} working sets · {exercise.prescription.repMin ?? '—'}–{exercise.prescription.repMax ?? '—'} reps · Edit targets</summary><PrescriptionEditor value={exercise.prescription} onChange={prescription => changeExercise(exercise.id, value => ({ ...value, prescription }))}/><p className="muted small-text">Changing the target count does not remove logged sets. Add or remove sets below.</p></details>
-        <Recommendation workout={{ ...workout, version: row?.serverVersion ?? workout.version }} synced={row?.state === 'synced' && !pendingWrites} exercise={exercise} onApply={weight => changeExercise(exercise.id, value => ({ ...value, sets: value.sets.map(set => !set.completed && !set.warmup && set.weight === null ? { ...set, weight } : set) }))}/>
-        <div className="set-heading"><span>SET</span><span>KG</span><span>REPS</span><span>RIR <abbr title="Reps in reserve: how many more reps you felt you could do">?</abbr></span><span>DONE</span></div>
+        <Recommendation workout={{ ...workout, version: row?.serverVersion ?? workout.version }} synced={row?.state === 'synced' && !pendingWrites} exercise={exercise} onApply={weight => changeExercise(exercise.id, value => ({ ...value, sets: value.sets.map(set => !isSetComplete(set) && !set.warmup && set.weight === null ? { ...set, weight } : set) }))}/>
+        <div className="set-heading"><span>SET</span><span>KG</span><span>REPS</span><span>RIR <abbr title="Reps in reserve: how many more reps you felt you could do">?</abbr></span></div>
         {exercise.sets.map((set, setIndex) => <SetEditor key={set.id} set={set} index={setIndex} onChange={updated => changeExercise(exercise.id, value => ({ ...value, sets: value.sets.map(item => item.id === set.id ? updated : item) }))} onRemove={() => changeExercise(exercise.id, value => ({ ...value, sets: value.sets.filter(item => item.id !== set.id) }))}/>)}
         <button className="button dashed wide" disabled={exercise.sets.length >= 50} onClick={() => changeExercise(exercise.id, value => ({ ...value, sets: [...value.sets, emptySet()] }))}>+ Add set</button>
       </section>)}</div>
       {!workout.exercises.length && <div className="empty"><span className="empty-symbol" aria-hidden="true">＋</span><h2>A fresh start</h2><p>Add your first exercise, or start from a saved routine.</p><Link className="text-button" to="/routines">Browse your routines →</Link></div>}
       <div className="stack section-gap"><button className="button dashed wide" disabled={workout.exercises.length >= 50} onClick={() => setPicker(true)}>+ Add exercise</button><p className="muted small-text">RIR is optional: enter how many more reps you felt you could perform. Warm-ups do not count toward muscle summaries or progression.</p></div>
     </fieldset>
-    <div className="session-finish"><span className="muted small-text">{completedSets ? `${completedSets} working set${completedSets === 1 ? '' : 's'} logged. You can finish whenever you’re ready.` : 'Mark a set done to finish your session.'}</span><button className="button primary wide" disabled={busy || row?.state === 'conflict' || !workout.exercises.some(exercise => exercise.sets.some(set => set.completed))} onClick={complete}>{busy ? 'Saving session…' : 'Complete workout ✓'}</button></div>
+    <div className="session-finish"><span className="muted small-text">{completedSets ? `${completedSets} working set${completedSets === 1 ? '' : 's'} logged. You can finish whenever you’re ready.` : 'Enter weight and reps to log a set.'}</span><button className="button primary wide" disabled={busy || row?.state === 'conflict' || !workout.exercises.some(exercise => exercise.sets.some(isSetComplete))} onClick={complete}>{busy ? 'Saving session…' : 'Complete workout ✓'}</button></div>
     {picker && <ExercisePicker catalog={catalog} limit={50 - workout.exercises.length} onClose={() => setPicker(false)} onAdd={items => change(value => ({ ...value, exercises: [...value.exercises, ...items.map(exercise => sessionExercise(exercise))] }))}/>}
   </>;
 }

@@ -31,7 +31,7 @@ describe('next-session progression', () => {
   });
   it('excludes incomplete workouts, partial exercises, and warm-ups', () => {
     const incomplete=session();incomplete.status='in_progress';incomplete.completedAt=null;
-    const partial=session();partial.exercises[0].sets[0].completed=false;
+    const partial=session();partial.exercises[0].sets[0].reps=null;
     expect(recommend(exercise(),[incomplete,partial]).action).toBe('baseline');
     const withWarmup=session();withWarmup.exercises[0].sets.unshift({...withWarmup.exercises[0].sets[0],id:randomUUID(),weight:20,reps:5,warmup:true});
     expect(recommend(exercise(),[withWarmup,session()]).action).toBe('increase');
@@ -45,7 +45,7 @@ describe('next-session progression', () => {
 });
 describe('weekly muscle summary', () => {
   it('counts completed working sets with separate primary and secondary involvement', () => {
-    const w=session();w.exercises[0].sets.push({...w.exercises[0].sets[0],id:randomUUID(),warmup:true});w.exercises[0].sets[0].completed=false;
+    const w=session();w.exercises[0].sets.push({...w.exercises[0].sets[0],id:randomUUID(),warmup:true});w.exercises[0].sets[0].reps=null;
     const summary=weeklySummary([w], 'Europe/Dublin',new Date('2026-10-07T12:00:00Z'));
     expect(summary.start).toBe('2026-10-05');expect(summary.counts.find(c=>c.muscle==='chest')).toMatchObject({primarySets:2,secondarySets:0});
     expect(summary.counts.find(c=>c.muscle==='triceps')).toMatchObject({primarySets:0,secondarySets:2});

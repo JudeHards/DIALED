@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { prescriptionSchema, recommend } from '@dialed/shared';
 import { useTraining } from '../lib/Training';
+import { isSetComplete } from '../lib/models';
 
 export default function Recommendation({ workout, exercise, onApply, synced = true }) {
   const { rows, api, online } = useTraining();
@@ -13,7 +14,7 @@ export default function Recommendation({ workout, exercise, onApply, synced = tr
   const signature = JSON.stringify(decision) + JSON.stringify(exercise.prescription) + exercise.id + workout.id;
   const explanation = result?.signature === signature ? result.value : null;
   const busy = pending === signature;
-  const canApply = exercise.sets.some(set => !set.completed && !set.warmup && set.weight === null);
+  const canApply = exercise.sets.some(set => !isSetComplete(set) && !set.warmup && set.weight === null);
 
   async function explain() {
     setPending(signature);

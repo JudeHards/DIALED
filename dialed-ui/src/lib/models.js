@@ -1,5 +1,6 @@
 import { defaultPrescription, workoutSchema } from '@dialed/shared';
 export const emptySet = () => ({ id: crypto.randomUUID(), weight: null, reps: null, rir: null, completed: false, warmup: false });
+export const isSetComplete = set => set.weight !== null && set.reps !== null;
 export const routineExercise = exercise => ({ id: crypto.randomUUID(), exerciseId: exercise.id, prescription: defaultPrescription(exercise.equipment) });
 export function sessionExercise(exercise, prescription) {
   if (!exercise) throw new Error('This routine contains an unavailable exercise. Edit the routine and select it again.');
@@ -26,7 +27,10 @@ export function recoverLegacy(record, catalog) {
     if (matches.length !== 1) throw new Error(`Cannot match ${e.name || 'an exercise'} to the catalogue. Download the original for manual recovery.`);
     const result = sessionExercise(matches[0]);
     const numeric = n => n === '' || n === null || n === undefined ? null : Number(n);
-    result.sets = (e.sets || []).map(s => ({ ...emptySet(), weight: numeric(s.weight), reps: numeric(s.reps), rir: numeric(s.rir), completed: Boolean(s.completed ?? s.done), warmup: Boolean(s.warmup) }));
+    result.sets = (e.sets || []).map(s => {
+      const set = { ...emptySet(), weight: numeric(s.weight), reps: numeric(s.reps), rir: numeric(s.rir), warmup: Boolean(s.warmup) };
+      return { ...set, completed: isSetComplete(set) };
+    });
     result.prescription.workingSets = Math.min(20, Math.max(1, result.sets.filter(s => !s.warmup).length));
     return result;
   });
