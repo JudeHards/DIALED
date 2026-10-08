@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -25,7 +25,9 @@ describe.sequential('production persistence migration', () => {
       grant execute on function auth.uid() to authenticated, anon;
     `);
     await db.query('insert into auth.users(id) values ($1), ($2)', [userA, userB]);
-    await db.exec(await readFile(resolve('../supabase/migrations/202610070001_dialed.sql'), 'utf8'));
+    for (const migration of (await readdir(resolve('../supabase/migrations'))).filter(name => name.endsWith('.sql')).sort()) {
+      await db.exec(await readFile(resolve('../supabase/migrations', migration), 'utf8'));
+    }
     await db.exec(await readFile(resolve('../supabase/seed.sql'), 'utf8'));
   }, 30_000);
   afterAll(async () => { await db?.close(); if (directory) await rm(directory, { recursive: true, force: true }); });
@@ -59,8 +61,8 @@ describe.sequential('production persistence migration', () => {
     const draft = workout(); const mutationId = randomUUID();
     const saved = await saveWorkout(draft, mutationId);
     expect(await saveWorkout(draft, mutationId)).toEqual(saved);
-    await expect(saveWorkout({ ...draft, name: 'Changed replay' }, mutationId)).rejects.toMatchObject({ code: '40001' });
-    await expect(saveWorkout({ ...draft, name: 'Stale device' })).rejects.toMatchObject({ code: '40001' });
+    await expect(saveWorkout({ ...draft, name: 'Changed replay' }, mutationId)).rejects.toMatchObject({ code: 'PT409' });
+    await expect(saveWorkout({ ...draft, name: 'Stale device' })).rejects.toMatchObject({ code: 'PT409' });
     const updated = await saveWorkout({ ...saved, name: 'My new name' });
     expect(updated.version).toBe(2);
     expect((await getWorkout(saved.id))?.name).toBe('My new name');
@@ -110,7 +112,7 @@ describe.sequential('production persistence migration', () => {
     const edit = structuredClone(savedRoutine); edit.exercises[0].prescription.repMax = 15;
     const updatedRoutine = await saveRoutine(edit);
     expect((await getWorkout(saved.id))?.exercises[0].prescription.repMax).toBe(12);
-    await expect(asUser(userA, () => db.query('select delete_routine($1, $2)', [updatedRoutine.id, 1]))).rejects.toMatchObject({ code: '40001' });
+    await expect(asUser(userA, () => db.query('select delete_routine($1, $2)', [updatedRoutine.id, 1]))).rejects.toMatchObject({ code: 'PT409' });
     await asUser(userA, () => db.query('select delete_routine($1, $2)', [updatedRoutine.id, updatedRoutine.version]));
     expect((await getWorkout(saved.id))?.routineId).toBeNull();
     // An offline draft may still carry the deleted template ID; it must remain saveable.

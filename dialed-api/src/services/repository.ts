@@ -6,7 +6,7 @@ export class HttpError extends Error {
 }
 export function dbError(error: { code?: string; message: string } | null) {
   if (!error) return;
-  if (error.code === '40001') throw new HttpError(409, error.message);
+  if ((error.code === '40001' || error.code === 'PT409')) throw new HttpError(409, error.message);
   if (error.code === '42501' || error.code === 'PGRST116') throw new HttpError(404, 'Record not found');
   if (error.code?.startsWith('22') || error.code?.startsWith('23')) throw new HttpError(400, 'Invalid workout or routine data');
   throw new HttpError(503, 'Storage is temporarily unavailable. Your draft is kept on this device.');
