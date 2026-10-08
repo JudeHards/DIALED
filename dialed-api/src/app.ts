@@ -1,7 +1,7 @@
 import express, { type Request, type ErrorRequestHandler } from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
-import { z, ZodError } from 'zod';
+import { z } from 'zod';
 import { saveWorkoutSchema, saveRoutineSchema, profileSchema, recommend, weeklySummary } from '@dialed/shared';
 import { HttpError, SupabaseRepository, type Repository } from './services/repository';
 import { configuredExplanations, type Explanations } from './services/explanations';
@@ -18,6 +18,9 @@ async function authenticate(token: string): Promise<Context> {
   return { userId: data.claims.sub, repo: new SupabaseRepository(db, data.claims.sub) };
 }
 const idSchema = z.string().uuid();
+// Shared contracts can be loaded through either the ESM or CommonJS Zod export.
+// Validate the error shape rather than relying on cross-module instanceof checks.
+const validationErrorSchema = z.object({ name: z.literal('ZodError'), issues: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() })) });
 export function createApp(options: { authenticate?: Authenticate; explanations?: Explanations } = {}) {
   const app = express();
   const explanations = options.explanations ?? configuredExplanations();
@@ -51,10 +54,9 @@ export function createApp(options: { authenticate?: Authenticate; explanations?:
     await (res.locals.context as Context).repo.deleteRoutine(idSchema.parse(req.params.id), version); res.status(204).end();
   });
   app.post('/api/routines/:id/start', async (req, res) => {
-    const { sessionId, mutationId, startedAt } = z.object({ sessionId: idSchema, mutationId: idSchema, startedAt: z.string().datetime(), workout: saveWorkoutSchema.shape.workout }).strict().parse(req.body);
+    const { sessionId, mutationId, startedAt, workout } = z.object({ sessionId: idSchema, mutationId: idSchema, startedAt: z.string().datetime(), workout: saveWorkoutSchema.shape.workout }).strict().parse(req.body);
     const repo = (res.locals.context as Context).repo;
     // A client-created session is the same document on every retry, including child IDs.
-    const { workout } = z.object({ workout: saveWorkoutSchema.shape.workout }).parse({ workout: req.body.workout });
     const routine = await repo.routine(idSchema.parse(req.params.id));
     if (workout.id !== sessionId || workout.routineId !== routine.id || workout.startedAt !== startedAt || workout.version !== 0 || workout.status !== 'in_progress') throw new HttpError(400, 'Invalid routine session');
     res.status(201).json(await repo.saveWorkout(workout, 0, mutationId));
@@ -86,7 +88,8 @@ export function createApp(options: { authenticate?: Authenticate; explanations?:
   });
   app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
   const errors: ErrorRequestHandler = (err, _req, res, _next) => {
-    if (err instanceof ZodError) { res.status(400).json({ error: err.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') }); return; }
+    const validationError = validationErrorSchema.safeParse(err);
+    if (validationError.success) { res.status(400).json({ error: validationError.data.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') }); return; }
     if (err instanceof HttpError) { res.status(err.status).json({ error: err.message }); return; }
     if (err instanceof SyntaxError) { res.status(400).json({ error: 'Invalid JSON' }); return; }
     console.error(JSON.stringify({ event: 'api_error', requestId: randomUUID() }));

@@ -100,7 +100,10 @@ create function public.routine_document(p_id uuid) returns jsonb language sql st
   select jsonb_build_object('id',r.id,'name',r.name,'version',r.version,'exercises',coalesce((select jsonb_agg(jsonb_build_object('id',e.id,'exerciseId',e.exercise_id,'prescription',e.prescription) order by e.position) from public.routine_exercises e where e.routine_id=r.id),'[]'::jsonb)) from public.routines r where r.id=p_id;
 $$;
 create function public.valid_prescription(p jsonb) returns boolean language sql immutable set search_path = '' as $$
-  select coalesce(jsonb_typeof(p)='object' and (p->>'workingSets')::numeric between 1 and 20
+  select coalesce(jsonb_typeof(p)='object'
+    and jsonb_typeof(p->'workingSets')='number' and jsonb_typeof(p->'repMin')='number'
+    and jsonb_typeof(p->'repMax')='number' and jsonb_typeof(p->'incrementKg')='number'
+    and (p->>'workingSets')::numeric between 1 and 20
     and (p->>'workingSets')::numeric = trunc((p->>'workingSets')::numeric)
     and (p->>'repMin')::numeric between 1 and 100 and (p->>'repMin')::numeric = trunc((p->>'repMin')::numeric)
     and (p->>'repMax')::numeric between (p->>'repMin')::numeric and 100 and (p->>'repMax')::numeric = trunc((p->>'repMax')::numeric)
@@ -117,6 +120,9 @@ declare
   ep integer := 0; sp integer; hash text := md5('workout' || p_document::text || p_expected_version::text);
 begin
   if uid is null then raise exception 'Authentication required' using errcode='42501'; end if;
+  if p_expected_version is null or p_expected_version < 0 or wid is null or p_mutation_id is null
+    or (p_document->>'version')::integer is distinct from p_expected_version
+    then raise exception 'Invalid save metadata' using errcode='22023'; end if;
   -- Per-user serialization also prevents concurrent reuse of a mutation ID across resources.
   perform pg_advisory_xact_lock(hashtextextended(uid::text, 0));
   select * into replay from public.mutations where user_id=uid and id=p_mutation_id;
@@ -131,11 +137,12 @@ begin
     if old.status='completed' then raise exception 'Completed workouts are read-only' using errcode='22023'; end if;
   elsif p_expected_version <> 0 then raise exception 'Workout not found or version changed' using errcode='40001';
   end if;
-  if p_expected_version is null or p_expected_version < 0 or wid is null or p_mutation_id is null then raise exception 'Invalid save metadata' using errcode='22023'; end if;
-  if p_document->>'routineId' is not null and not exists(select 1 from public.routines where id=(p_document->>'routineId')::uuid and user_id=uid) then raise exception 'Routine not found' using errcode='42501'; end if;
+  if old.id is null and p_document->>'routineId' is not null and not exists(select 1 from public.routines where id=(p_document->>'routineId')::uuid and user_id=uid) then raise exception 'Routine not found' using errcode='42501'; end if;
+  if old.id is not null and old.started_at is distinct from (p_document->>'startedAt')::timestamptz then raise exception 'Session start cannot be changed' using errcode='22023'; end if;
   if jsonb_typeof(p_document->'exercises') is distinct from 'array' or jsonb_array_length(p_document->'exercises')>50 then raise exception 'Invalid exercises' using errcode='22023'; end if;
+  if exists(select 1 from jsonb_array_elements(p_document->'exercises') item group by item->>'id' having count(*)>1) then raise exception 'Duplicate exercise IDs' using errcode='22023'; end if;
   insert into public.workouts(id,user_id,routine_id,name,status,started_at,completed_at,version)
-    values(wid,uid,(p_document->>'routineId')::uuid,p_document->>'name',p_document->>'status',(p_document->>'startedAt')::timestamptz,(p_document->>'completedAt')::timestamptz,p_expected_version+1)
+    values(wid,uid,case when old.id is null then (p_document->>'routineId')::uuid else old.routine_id end,p_document->>'name',p_document->>'status',(p_document->>'startedAt')::timestamptz,(p_document->>'completedAt')::timestamptz,p_expected_version+1)
   on conflict(id) do update set name=excluded.name,status=excluded.status,completed_at=excluded.completed_at,version=excluded.version,updated_at=now();
   for e in select value from jsonb_array_elements(p_document->'exercises') loop
     if jsonb_typeof(e->'sets') is distinct from 'array' or jsonb_array_length(e->'sets')>50 then raise exception 'Invalid sets' using errcode='22023'; end if;
@@ -151,6 +158,11 @@ begin
     delete from public.exercise_sets where session_exercise_id=(e->>'id')::uuid;
     sp:=0;
     for s in select value from jsonb_array_elements(e->'sets') loop
+      if jsonb_typeof(s->'completed') is distinct from 'boolean' or jsonb_typeof(s->'warmup') is distinct from 'boolean'
+        or (s->>'weight' is not null and jsonb_typeof(s->'weight') <> 'number')
+        or (s->>'reps' is not null and (jsonb_typeof(s->'reps') <> 'number' or (s->>'reps')::numeric <> trunc((s->>'reps')::numeric)))
+        or (s->>'rir' is not null and (jsonb_typeof(s->'rir') <> 'number' or (s->>'rir')::numeric <> trunc((s->>'rir')::numeric)))
+        then raise exception 'Invalid set values' using errcode='22023'; end if;
       insert into public.exercise_sets(id,session_exercise_id,position,weight,reps,rir,completed,warmup)
         values((s->>'id')::uuid,(e->>'id')::uuid,sp,(s->>'weight')::numeric,(s->>'reps')::integer,(s->>'rir')::integer,(s->>'completed')::boolean,(s->>'warmup')::boolean);
       sp:=sp+1;
@@ -169,6 +181,9 @@ language plpgsql security definer set search_path = '' as $$
 declare uid uuid:=auth.uid(); rid uuid:=(p_document->>'id')::uuid; old public.routines; replay public.mutations; result jsonb; e jsonb; ep integer:=0; hash text:=md5('routine'||p_document::text||p_expected_version::text);
 begin
   if uid is null then raise exception 'Authentication required' using errcode='42501'; end if;
+  if p_expected_version is null or p_expected_version<0 or rid is null or p_mutation_id is null
+    or (p_document->>'version')::integer is distinct from p_expected_version
+    then raise exception 'Invalid save metadata' using errcode='22023'; end if;
   perform pg_advisory_xact_lock(hashtextextended(uid::text,0));
   select * into replay from public.mutations where user_id=uid and id=p_mutation_id;
   if found then
@@ -180,7 +195,6 @@ begin
     if old.user_id<>uid then raise exception 'Routine not found' using errcode='42501'; end if;
     if old.version<>p_expected_version then raise exception 'Routine changed on another device' using errcode='40001'; end if;
   elsif p_expected_version<>0 then raise exception 'Routine not found or version changed' using errcode='40001'; end if;
-  if p_expected_version is null or p_expected_version<0 or rid is null or p_mutation_id is null then raise exception 'Invalid save metadata' using errcode='22023'; end if;
   if jsonb_typeof(p_document->'exercises') is distinct from 'array' or jsonb_array_length(p_document->'exercises') not between 1 and 50 then raise exception 'Choose 1 to 50 exercises' using errcode='22023'; end if;
   insert into public.routines(id,user_id,name,version) values(rid,uid,p_document->>'name',p_expected_version+1)
   on conflict(id) do update set name=excluded.name,version=excluded.version,updated_at=now();
