@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { cached } from './offline';
 
-const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+const BASE = (import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:3000')).replace(/\/$/, '');
 export class ApiError extends Error {
   constructor(status, message) { super(message); this.name = 'ApiError'; this.status = status; }
 }

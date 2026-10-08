@@ -6,6 +6,8 @@ import { saveWorkoutSchema, saveRoutineSchema, profileSchema, recommend, weeklyS
 import { HttpError, SupabaseRepository, type Repository } from './services/repository';
 import { configuredExplanations, type Explanations } from './services/explanations';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { extname, join } from 'node:path';
 export type Context = { userId: string; repo: Repository };
 type Authenticate = (token: string) => Promise<Context>;
 async function authenticate(token: string): Promise<Context> {
@@ -21,7 +23,7 @@ const idSchema = z.string().uuid();
 // Shared contracts can be loaded through either the ESM or CommonJS Zod export.
 // Validate the error shape rather than relying on cross-module instanceof checks.
 const validationErrorSchema = z.object({ name: z.literal('ZodError'), issues: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() })) });
-export function createApp(options: { authenticate?: Authenticate; explanations?: Explanations } = {}) {
+export function createApp(options: { authenticate?: Authenticate; explanations?: Explanations; frontendDirectory?: string } = {}) {
   const app = express();
   const explanations = options.explanations ?? configuredExplanations();
   app.disable('x-powered-by');
@@ -86,6 +88,18 @@ export function createApp(options: { authenticate?: Authenticate; explanations?:
     const repo = (res.locals.context as Context).repo;
     res.json(weeklySummary(await repo.workouts(), (await repo.profile())?.timezone ?? 'UTC'));
   });
+  if (options.frontendDirectory) {
+    const index = join(options.frontendDirectory, 'index.html');
+    if (!existsSync(index)) throw new Error('Build the frontend before starting the production server.');
+    app.use(express.static(options.frontendDirectory, {
+      setHeaders: (res, file) => res.setHeader('Cache-Control', file.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'),
+    }));
+    app.get(/.*/, (req, res, next) => {
+      if (req.path === '/api' || req.path.startsWith('/api/') || extname(req.path) || !req.accepts('html')) { next(); return; }
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(index);
+    });
+  }
   app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
   const errors: ErrorRequestHandler = (err, _req, res, _next) => {
     const validationError = validationErrorSchema.safeParse(err);
