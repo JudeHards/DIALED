@@ -56,6 +56,14 @@ describe('weekly muscle summary', () => {
     expect(weeklySummary([],'America/New_York',new Date('2026-11-01T12:00:00Z')).start).toBe('2026-10-26');
   });
   it('excludes unfinished sessions',()=>{const w=session();w.status='in_progress';w.completedAt=null;expect(weeklySummary([w],'UTC',new Date('2026-10-07')).counts[0].primarySets).toBe(0);});
+  it('accepts anterior delt sessions and counts their primary sets separately', () => {
+    const raise = exercises.find(e => e.id === 'ex_anterior_delt_raise_cable')!;
+    const w = session({ ...exercise(), exerciseId: raise.id, snapshot: raise });
+    expect(workoutSchema.safeParse(w).success).toBe(true);
+    const summary = weeklySummary([w], 'Europe/Dublin', new Date('2026-10-07T12:00:00Z'));
+    expect(summary.counts.find(c => c.muscle === 'anterior delt')).toMatchObject({ primarySets: 3, secondarySets: 0 });
+    expect(summary.counts.find(c => c.muscle === 'shoulders')).toMatchObject({ primarySets: 0, secondarySets: 0 });
+  });
 });
 describe('shared validation', () => {
   it('preserves zero weight and rejects impossible set values', () => {

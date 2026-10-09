@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const muscles = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'core'] as const;
+export const muscles = ['chest', 'back', 'shoulders', 'anterior delt', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'core'] as const;
 export const muscleSchema = z.enum(muscles);
 export const catalogSchema = z.object({
   id: z.string().min(1), name: z.string().trim().min(1).max(160),

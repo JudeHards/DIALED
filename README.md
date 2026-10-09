@@ -12,7 +12,7 @@ An installable workout log: React/Vite frontend, Express/TypeScript API, shared 
 - Reusable routines and independent workout sessions, editable prescriptions, completed sets, optional reps in reserve, warm-ups, and history/detail views.
 - Durable, account-owned database records with row-level security. Atomic saves use stable mutation IDs and optimistic versions; completing a workout updates the same session.
 - Account-scoped IndexedDB drafts, cached data, reconnect/startup retries, and conflict recovery. Legacy local-storage records remain untouched and require reviewed import in Settings.
-- A 33-exercise catalogue with primary/secondary muscle snapshots. Weekly summaries count completed working sets in completed sessions separately for primary targets and secondary involvement, Monday–Sunday in the saved timezone. These are set counts, not measured activation.
+- A 39-exercise catalogue with primary/secondary muscle snapshots. Weekly summaries count completed working sets in completed sessions separately for primary targets and secondary involvement, Monday–Sunday in the saved timezone. These are set counts, not measured activation.
 - Deterministic next-session load recommendations with explicit Apply. Two comparable sessions are required for progression; mixed weights and bodyweight do not receive automatic adjustments. Optional OpenAI explanations cannot change numeric decisions and fail back to the rule explanation.
 
 ## Local setup

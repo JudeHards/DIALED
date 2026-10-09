@@ -4,7 +4,7 @@ import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import type { Routine, Workout } from '@dialed/shared';
+import { exercises, type Routine, type Workout } from '@dialed/shared';
 import { bench, routine, userA, userB, workout } from './fixtures';
 
 // Run the production SQL, with only Supabase's auth schema supplied by the harness.
@@ -48,7 +48,7 @@ describe.sequential('production persistence migration', () => {
   }
 
   it('seeds the full catalogue and persists numeric values, completion flags and muscle snapshots', async () => {
-    expect((await asUser(userA, () => db.query('select id from public.exercises'))).rows).toHaveLength(33);
+    expect((await asUser(userA, () => db.query('select id from public.exercises'))).rows.map(row => row.id).sort()).toEqual(exercises.map(exercise => exercise.id).sort());
     const draft = workout();
     draft.exercises[0].sets[0] = { ...draft.exercises[0].sets[0], weight: 0, reps: 8, rir: 0 };
     const saved = await saveWorkout(draft);

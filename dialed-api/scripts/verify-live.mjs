@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { exercises } from '@dialed/shared';
 config({ path: '.env.test.local', quiet: true });
 config({ path: 'dialed-api/.env', quiet: true });
 const url = process.env.SUPABASE_URL;
@@ -45,7 +46,7 @@ try {
   }
   const [a, b] = users;
   await start();
-  const catalogue = await request(a, '/exercises'); assert.equal(catalogue.length, 33);
+  const catalogue = await request(a, '/exercises'); assert.deepEqual(catalogue.map(exercise => exercise.id).sort(), exercises.map(exercise => exercise.id).sort());
   const bench = catalogue.find(e => e.id === 'ex_bench_barbell');
   const prescription = { workingSets: 3, repMin: 8, repMax: 12, incrementKg: 2.5 };
   const routine = { id: randomUUID(), name: 'Live verification routine', version: 0, exercises: [{ id: randomUUID(), exerciseId: bench.id, prescription }] };

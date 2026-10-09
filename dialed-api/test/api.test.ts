@@ -5,7 +5,7 @@ import { createApp } from '../src/app';
 import { HttpError, type Repository } from '../src/services/repository';
 import { Explanations } from '../src/services/explanations';
 import { bench, routine, userA, userB, workout } from './fixtures';
-import type { Workout } from '@dialed/shared';
+import { muscles, type Workout } from '@dialed/shared';
 
 function repository(): Repository {
   return {
@@ -124,6 +124,6 @@ describe('HTTP authentication, validation and route wiring', () => {
     expect((await request(app).put('/api/profile').set(auth).send({ timezone: 'Atlantis/Unknown' })).status).toBe(400);
     expect((await request(app).put('/api/profile').set(auth).send({ timezone: 'Europe/Dublin' })).status).toBe(200);
     const result = await request(app).get('/api/summary/weekly').set(auth);
-    expect(result.status).toBe(200); expect(result.body.timezone).toBe('Europe/Dublin'); expect(result.body.counts).toHaveLength(10);
+    expect(result.status).toBe(200); expect(result.body.timezone).toBe('Europe/Dublin'); expect(result.body.counts.map((count: { muscle: string }) => count.muscle)).toEqual([...muscles]);
   });
 });
