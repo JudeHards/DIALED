@@ -18,4 +18,13 @@ section.panel.exercise-card{padding-top:8px;padding-bottom:8px}
 section.panel.exercise-card .muscle-labels{margin-top:4px;margin-bottom:4px}
 section.panel.exercise-card details.targets{margin-top:4px;margin-bottom:4px;padding-top:4px;padding-bottom:4px}
 section.panel.exercise-card aside.recommendation{margin-bottom:8px;padding-top:4px;padding-bottom:4px}
-section.panel.exercise-card .set-row{padding-top:4px;padding-bottom:4px}
+section.panel.exercise-card .set-row{padding-top:4px;padding-bottom:4px;row-gap:2px}
+section.panel.exercise-card .set-options .text-button{min-height:26px;padding-block:2px}
+section.panel.exercise-card .set-options label{min-height:26px}
+section.panel.exercise-card>.row .eyebrow{margin-bottom:0}
+section.panel.exercise-card aside.recommendation>.row:nth-child(2){margin-block:4px}
+section.panel.exercise-card .recommendation details{margin-block:4px}
+.session-heading{margin-bottom:16px}
+.session-heading p{margin-top:8px}
+.session-progress{margin-bottom:14px;padding-block:9px}
+.session-fields>.stack.section-gap{margin-top:16px;gap:12px}

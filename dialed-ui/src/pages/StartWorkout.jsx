@@ -143,7 +143,7 @@ export default function StartWorkout() {
   const completedSets = sets.filter(isSetComplete).length;
   const savedMessage = storageFailed.current ? 'Device save needs attention' : pendingWrites ? 'Saving to this device…' : row?.state === 'conflict' ? 'Your local draft is safe · review required' : row?.state === 'synced' ? 'Saved to your account' : 'Saved on this device · sync pending';
   return <>
-    <div className="page-heading"><div className="eyebrow">SHOW UP. PUT IN THE WORK.</div><h1>In session</h1><p role="status" aria-live="polite">{savedMessage}</p></div>
+    <div className="page-heading session-heading"><div className="eyebrow">SHOW UP. PUT IN THE WORK.</div><h1>In session</h1><p role="status" aria-live="polite">{savedMessage}</p></div>
     <div className="session-progress" aria-label={`${completedSets} of ${sets.length} working sets completed`}><span><strong>{completedSets}</strong> / {sets.length} working sets</span><div className="progress-track"><div style={{ width: `${sets.length ? completedSets / sets.length * 100 : 0}%` }}/></div></div>
     <label>Session name<input value={workout.name} maxLength={120} disabled={busy} onChange={event => change(value => ({ ...value, name: event.target.value }))}/></label>
     {(error || row?.error) && <div className="notice error" role="alert"><p>{error || row.error}</p><button className="text-button" onClick={() => downloadJson(current.current, 'dialed-draft.json')}>Download local draft</button></div>}
