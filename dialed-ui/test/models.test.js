@@ -22,6 +22,17 @@ describe('routine and session models', () => {
     expect(value.sets).toHaveLength(3);
     expect(value.snapshot.primaryMuscle).toBe(dumbbell.primaryMuscle);
     expect(value.snapshot.secondaryMuscles).toEqual(dumbbell.secondaryMuscles);
+    expect(value.snapshot.muscleTargets).toEqual(dumbbell.muscleTargets);
+  });
+  it('copies head bias into independent session snapshots', () => {
+    const incline = exercises.find(exercise => exercise.id === 'ex_incline_db');
+    const first = sessionExercise(incline);
+    const second = sessionExercise(incline);
+    const part = first.snapshot.muscleTargets.find(target => target.part === 'pectoralis_clavicular');
+    expect(part.emphasis).toBe('biased');
+    part.emphasis = 'shared';
+    expect(second.snapshot.muscleTargets.find(target => target.part === part.part).emphasis).toBe('biased');
+    expect(incline.muscleTargets.find(target => target.part === part.part).emphasis).toBe('biased');
   });
   it('explains unavailable catalogue exercises before any partial session is created', () => {
     expect(() => newWorkout({ id: crypto.randomUUID(), name: 'Old', exercises: [{ exerciseId: 'missing' }] }, exercises)).toThrow('unavailable exercise');

@@ -5,7 +5,7 @@ import { createApp } from '../src/app';
 import { HttpError, type Repository } from '../src/services/repository';
 import { Explanations } from '../src/services/explanations';
 import { bench, routine, userA, userB, workout } from './fixtures';
-import { muscles, type Workout } from '@dialed/shared';
+import { exercises, muscles, type Workout } from '@dialed/shared';
 
 function repository(): Repository {
   return {
@@ -53,11 +53,48 @@ describe('HTTP authentication, validation and route wiring', () => {
 
   it('round trips zero weight, reps, RIR, muscle metadata and stable mutation IDs', async () => {
     const draft = workout(); draft.exercises[0].sets[0].weight = 0;
+    draft.exercises[0].snapshot = structuredClone(exercises.find(exercise => exercise.id === bench.id)!);
     const body = payload(draft);
     const res = await request(app).put(`/api/workouts/${draft.id}`).set(auth).send(body);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ...draft, version: 1 });
     expect(repo.saveWorkout).toHaveBeenCalledWith(draft, 0, body.mutationId);
+  });
+
+  it('exposes specific target metadata and Step Ups through the catalogue routes', async () => {
+    vi.mocked(repo.catalog).mockResolvedValue(exercises);
+    const list = await request(app).get('/api/exercises').set(auth);
+    expect(list.status).toBe(200);
+    expect(list.body).toEqual(exercises);
+    const detail = await request(app).get('/api/exercises/ex_step_up').set(auth);
+    expect(detail.status).toBe(200);
+    expect(detail.body.name).toBe('Step Ups');
+    expect(detail.body.muscleTargets.length).toBeGreaterThan(0);
+  });
+
+  it('accepts legacy muscle snapshots without inventing specific targets', async () => {
+    const draft = workout();
+    draft.exercises[0].snapshot.primaryMuscle = 'anterior delt';
+    draft.exercises[0].snapshot.secondaryMuscles = [];
+    const response = await request(app).put(`/api/workouts/${draft.id}`).set(auth).send(payload(draft));
+    expect(response.status).toBe(200);
+    expect(response.body.exercises[0].snapshot).toEqual(draft.exercises[0].snapshot);
+    expect(response.body.exercises[0].snapshot).not.toHaveProperty('muscleTargets');
+  });
+
+  it.each([
+    { part: 'not_a_muscle', role: 'primary', emphasis: 'biased' },
+    { part: 'pectoralis_sternocostal', role: 'isolated', emphasis: 'biased' },
+    { part: 'pectoralis_sternocostal', role: 'primary', emphasis: 'guaranteed' },
+  ])('rejects invalid anatomy targets before storage: %j', async target => {
+    const draft = workout();
+    const body = payload(draft);
+    const snapshot = { ...draft.exercises[0].snapshot, muscleTargets: [target] };
+    const response = await request(app).put(`/api/workouts/${draft.id}`).set(auth).send({
+      ...body, workout: { ...draft, exercises: [{ ...draft.exercises[0], snapshot }] },
+    });
+    expect(response.status).toBe(400);
+    expect(repo.saveWorkout).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -125,5 +162,19 @@ describe('HTTP authentication, validation and route wiring', () => {
     expect((await request(app).put('/api/profile').set(auth).send({ timezone: 'Europe/Dublin' })).status).toBe(200);
     const result = await request(app).get('/api/summary/weekly').set(auth);
     expect(result.status).toBe(200); expect(result.body.timezone).toBe('Europe/Dublin'); expect(result.body.counts.map((count: { muscle: string }) => count.muscle)).toEqual([...muscles]);
+  });
+
+  it('returns recorded head biases and identifies historical sets without target detail', async () => {
+    const completedAt = new Date().toISOString();
+    const legacy = workout({ status: 'completed', startedAt: completedAt, completedAt });
+    const specific = workout({ status: 'completed', startedAt: completedAt, completedAt });
+    specific.exercises[0].snapshot.secondaryMuscles = [];
+    specific.exercises[0].snapshot.muscleTargets = [{ part: 'pectoralis_clavicular', role: 'primary', emphasis: 'biased' }];
+    vi.mocked(repo.workouts).mockResolvedValue([legacy, specific]);
+    const result = await request(app).get('/api/summary/weekly').set(auth);
+    expect(result.status).toBe(200);
+    expect(result.body.counts.find((count: { muscle: string }) => count.muscle === 'chest')).toMatchObject({ primarySets: 6 });
+    expect(result.body.partCounts.find((count: { part: string }) => count.part === 'pectoralis_clavicular')).toMatchObject({ primarySets: 3, biasedSets: 3 });
+    expect(result.body.unmappedSets).toBe(3);
   });
 });

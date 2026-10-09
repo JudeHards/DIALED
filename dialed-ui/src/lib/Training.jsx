@@ -5,6 +5,9 @@ import { cached, drafts, mergeRemote, syncDrafts } from './offline';
 import { useAuth } from './Auth';
 
 const TrainingContext = createContext(null);
+// Older cached catalogues lack muscle targets. Start from the bundled catalogue
+// until a current catalogue has been fetched; workout snapshots stay untouched.
+const catalogCacheKey = 'catalog:muscle-targets:v1';
 const browserTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 export function TrainingProvider({ children }) {
   const { user } = useAuth(); const userId = user.id;
@@ -16,7 +19,7 @@ export function TrainingProvider({ children }) {
   const readLocal = useCallback(async () => {
     const sequence = ++localRead.current;
     const [list, routineList, exerciseList, profile] = await Promise.all([
-      drafts(userId), cached(userId, 'routines'), cached(userId, 'catalog'), cached(userId, 'profile'),
+      drafts(userId), cached(userId, 'routines'), cached(userId, catalogCacheKey), cached(userId, 'profile'),
     ]);
     if (!active.current || sequence !== localRead.current) return;
     setRows(list);
@@ -34,7 +37,7 @@ export function TrainingProvider({ children }) {
         await syncDrafts(userId, api);
         const results = await Promise.allSettled([api.exercises(), api.routines(), api.workouts(), api.profile()]);
         const [catalogResult, routineResult, workoutResult, profileResult] = results;
-        if (catalogResult.status === 'fulfilled') await cached(userId, 'catalog', catalogResult.value);
+        if (catalogResult.status === 'fulfilled') await cached(userId, catalogCacheKey, catalogResult.value);
         if (routineResult.status === 'fulfilled') await cached(userId, 'routines', routineResult.value);
         if (workoutResult.status === 'fulfilled') await mergeRemote(userId, workoutResult.value);
         if (profileResult.status === 'fulfilled') {

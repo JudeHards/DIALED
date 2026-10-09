@@ -1,3 +1,4 @@
+-- Catalogue upgrade only; existing workout snapshots remain unchanged.
 -- Generated from shared/src/catalog.ts with node scripts/seed.cjs
 insert into public.exercises(id,data) values
 ('ex_bench_barbell', '{"id":"ex_bench_barbell","name":"Barbell Bench Press","primaryMuscle":"chest","secondaryMuscles":["triceps","shoulders"],"equipment":"barbell","movement":"compound","laterality":"bilateral","muscleTargets":[{"part":"pectoralis_sternocostal","role":"primary","emphasis":"biased"},{"part":"pectoralis_clavicular","role":"primary","emphasis":"shared"},{"part":"triceps_long_head","role":"secondary","emphasis":"shared"},{"part":"triceps_lateral_head","role":"secondary","emphasis":"shared"},{"part":"triceps_medial_head","role":"secondary","emphasis":"shared"},{"part":"deltoid_anterior","role":"secondary","emphasis":"shared"}],"biasNotes":"A flat press emphasizes the sternocostal chest while the clavicular head also contributes."}'::jsonb),

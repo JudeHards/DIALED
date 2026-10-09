@@ -1,12 +1,53 @@
 import { z } from 'zod';
+import { muscles, musclePartIds, musclePartDetails, normalizeMuscleGroup } from './muscles';
 
-export const muscles = ['chest', 'back', 'shoulders', 'anterior delt', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'core'] as const;
-export const muscleSchema = z.enum(muscles);
+export { muscles } from './muscles';
+// The old label remains valid for saved snapshots and queued offline mutations.
+export const muscleSchema = z.enum([...muscles, 'anterior delt']);
+export const muscleTargetSchema = z.object({
+  part: z.enum(musclePartIds),
+  role: z.enum(['primary', 'secondary']),
+  // Biased means expected emphasis from exercise selection, never isolation or
+  // a measured percentage. Shared targets are involved without a head bias.
+  emphasis: z.enum(['biased', 'shared']),
+}).strict();
+export type MuscleTarget = z.infer<typeof muscleTargetSchema>;
 export const catalogSchema = z.object({
   id: z.string().min(1), name: z.string().trim().min(1).max(160),
   primaryMuscle: muscleSchema, secondaryMuscles: z.array(muscleSchema),
   equipment: z.string(), movement: z.string(), laterality: z.enum(['unilateral', 'bilateral', 'either']),
-}).strict();
+  // Omission identifies a legacy snapshot. Do not default or backfill it from
+  // today's catalogue: historical training detail would otherwise change.
+  muscleTargets: z.array(muscleTargetSchema).min(1).max(musclePartIds.length).optional(),
+  biasNotes: z.string().trim().min(1).max(1000).optional(),
+}).strict().superRefine((exercise, ctx) => {
+  const primary = normalizeMuscleGroup(exercise.primaryMuscle);
+  const secondary = exercise.secondaryMuscles.map(normalizeMuscleGroup);
+  if (secondary.includes(primary) || new Set(secondary).size !== secondary.length) {
+    ctx.addIssue({ code: 'custom', message: 'Muscle groups must be distinct', path: ['secondaryMuscles'] });
+  }
+  if (!exercise.muscleTargets) return;
+  const parts = new Set<string>();
+  for (const [index, target] of exercise.muscleTargets.entries()) {
+    if (parts.has(target.part)) ctx.addIssue({ code: 'custom', message: 'Muscle parts must be unique', path: ['muscleTargets', index, 'part'] });
+    parts.add(target.part);
+    const group = musclePartDetails[target.part].group;
+    if (target.role === 'primary' ? group !== primary : !secondary.includes(group)) {
+      ctx.addIssue({ code: 'custom', message: 'Muscle part role must match its broad muscle group', path: ['muscleTargets', index, 'role'] });
+    }
+    if (target.emphasis === 'biased' && target.role !== 'primary') {
+      ctx.addIssue({ code: 'custom', message: 'Bias must describe a primary target', path: ['muscleTargets', index, 'emphasis'] });
+    }
+  }
+  if (!exercise.muscleTargets.some(target => target.role === 'primary')) {
+    ctx.addIssue({ code: 'custom', message: 'Include at least one primary muscle part', path: ['muscleTargets'] });
+  }
+  for (const group of secondary) {
+    if (!exercise.muscleTargets.some(target => musclePartDetails[target.part].group === group)) {
+      ctx.addIssue({ code: 'custom', message: `Include a muscle part for secondary group ${group}`, path: ['muscleTargets'] });
+    }
+  }
+});
 export type CatalogExercise = z.infer<typeof catalogSchema>;
 export const prescriptionSchema = z.object({
   workingSets: z.number().int().min(1).max(20).default(3),

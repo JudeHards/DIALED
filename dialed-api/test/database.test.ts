@@ -4,14 +4,21 @@ import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { exercises, type Routine, type Workout } from '@dialed/shared';
+import { exercises, workoutSchema, type CatalogExercise, type Routine, type Workout } from '@dialed/shared';
 import { bench, routine, userA, userB, workout } from './fixtures';
+
+const currentBench = exercises.find(exercise => exercise.id === bench.id)!;
 
 // Run the production SQL, with only Supabase's auth schema supplied by the harness.
 // SET ROLE means these checks exercise PostgreSQL RLS, not a mocked ownership filter.
 describe.sequential('production persistence migration', () => {
   let db: PGlite;
   let directory: string;
+  let migratedCatalog: CatalogExercise[];
+  let legacySaved: Workout;
+  let legacyCompleted: Workout;
+  const legacyDraft = workout();
+  const legacyMutationId = randomUUID();
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), 'dialed-postgres-'));
     db = new PGlite(directory);
@@ -26,8 +33,15 @@ describe.sequential('production persistence migration', () => {
     `);
     await db.query('insert into auth.users(id) values ($1), ($2)', [userA, userB]);
     for (const migration of (await readdir(resolve('../supabase/migrations'))).filter(name => name.endsWith('.sql')).sort()) {
+      if (migration === '202610090002_muscle_targets.sql') {
+        // Simulate an installed catalogue and session before the anatomy upgrade.
+        await db.query('insert into exercises(id, data) values ($1, $2::jsonb)', [bench.id, JSON.stringify(bench)]);
+        legacySaved = await saveWorkout(legacyDraft, legacyMutationId);
+        legacyCompleted = await saveWorkout(workout({ status: 'completed', completedAt: '2026-10-07T11:00:00.000Z' }));
+      }
       await db.exec(await readFile(resolve('../supabase/migrations', migration), 'utf8'));
     }
+    migratedCatalog = (await db.query<{ data: CatalogExercise }>('select data from public.exercises order by id')).rows.map(row => row.data);
     await db.exec(await readFile(resolve('../supabase/seed.sql'), 'utf8'));
   }, 30_000);
   afterAll(async () => { await db?.close(); if (directory) await rm(directory, { recursive: true, force: true }); });
@@ -47,13 +61,30 @@ describe.sequential('production persistence migration', () => {
     return asUser(user, async () => (await db.query<{ result: Workout | null }>('select public.workout_document($1) as result', [id])).rows[0].result);
   }
 
+  it('installs the full target catalogue and Step Ups through migrations alone while preserving legacy snapshots', async () => {
+    expect(migratedCatalog).toEqual([...exercises].sort((a, b) => a.id.localeCompare(b.id)));
+    expect(migratedCatalog.find(exercise => exercise.id === 'ex_step_up')).toMatchObject({ name: 'Step Ups', muscleTargets: expect.any(Array) });
+    expect(legacySaved.exercises[0].snapshot).toEqual(bench);
+    expect(workoutSchema.parse(await getWorkout(legacySaved.id))).toEqual(legacySaved);
+    expect(workoutSchema.parse(await getWorkout(legacyCompleted.id))).toEqual(legacyCompleted);
+    expect(await saveWorkout(legacyDraft, legacyMutationId)).toEqual(legacySaved);
+    const edited = structuredClone(legacySaved);
+    edited.exercises[0].snapshot = structuredClone(currentBench);
+    const saved = await saveWorkout(edited);
+    expect(saved.exercises[0].snapshot).toEqual(bench);
+    expect(saved.exercises[0].snapshot).not.toHaveProperty('muscleTargets');
+  });
+
   it('seeds the full catalogue and persists numeric values, completion flags and muscle snapshots', async () => {
     expect((await asUser(userA, () => db.query('select id from public.exercises'))).rows.map(row => row.id).sort()).toEqual(exercises.map(exercise => exercise.id).sort());
     const draft = workout();
+    draft.exercises[0].snapshot = structuredClone(currentBench);
     draft.exercises[0].sets[0] = { ...draft.exercises[0].sets[0], weight: 0, reps: 8, rir: 0 };
     const saved = await saveWorkout(draft);
     expect(saved).toEqual({ ...draft, version: 1 });
+    expect(workoutSchema.parse(saved)).toEqual(saved);
     expect(await getWorkout(saved.id)).toEqual(saved);
+    expect(saved.exercises[0].snapshot.muscleTargets?.length).toBeGreaterThan(0);
     expect((await db.query('select * from public.exercise_sets where session_exercise_id = $1', [draft.exercises[0].id])).rows).toHaveLength(3);
   });
 
@@ -121,14 +152,19 @@ describe.sequential('production persistence migration', () => {
 
   it('takes authoritative muscle snapshots and preserves them across catalogue changes', async () => {
     const draft = workout(); draft.exercises[0].snapshot.primaryMuscle = 'core';
+    draft.exercises[0].snapshot.muscleTargets = [{ part: 'rectus_abdominis', role: 'primary', emphasis: 'biased' }];
+    draft.exercises[0].snapshot.biasNotes = 'Forged target metadata';
     const saved = await saveWorkout(draft);
-    expect(saved.exercises[0].snapshot.primaryMuscle).toBe('chest');
-    await db.query("update exercises set data = jsonb_set(data, '{primaryMuscle}', '\"shoulders\"') where id = $1", [bench.id]);
+    expect(saved.exercises[0].snapshot).toEqual(currentBench);
+    const revisedBench: CatalogExercise = { ...currentBench, name: 'Revised catalogue name', secondaryMuscles: [], muscleTargets: [{ part: 'pectoralis_clavicular', role: 'primary', emphasis: 'biased' }], biasNotes: 'Revised catalogue guidance' };
+    await db.query('update exercises set data = $1::jsonb where id = $2', [JSON.stringify(revisedBench), bench.id]);
     try {
-      const updated = await saveWorkout(saved);
-      expect(updated.exercises[0].snapshot.primaryMuscle).toBe('chest');
-      expect((await saveWorkout(workout())).exercises[0].snapshot.primaryMuscle).toBe('shoulders');
-    } finally { await db.query('update exercises set data = $1::jsonb where id = $2', [JSON.stringify(bench), bench.id]); }
+      const changed = structuredClone(saved);
+      changed.exercises[0].snapshot.muscleTargets = draft.exercises[0].snapshot.muscleTargets;
+      const updated = await saveWorkout(changed);
+      expect(updated.exercises[0].snapshot).toEqual(currentBench);
+      expect((await saveWorkout(workout())).exercises[0].snapshot).toEqual(revisedBench);
+    } finally { await db.query('update exercises set data = $1::jsonb where id = $2', [JSON.stringify(currentBench), bench.id]); }
   });
 
   it('rolls back the entire document when a set or prescription is invalid', async () => {
