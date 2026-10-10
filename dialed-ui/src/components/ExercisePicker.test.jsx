@@ -4,13 +4,14 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import ExercisePicker, { MuscleLabels } from './ExercisePicker';
 
 const catalog = [
-  { id: 'incline', name: 'Incline Press', primaryMuscle: 'chest', secondaryMuscles: ['shoulders'], equipment: 'dumbbell',
+  { id: 'incline', name: 'Incline Press', primaryMuscle: 'chest', secondaryMuscles: ['anterior delt'], equipment: 'dumbbell',
     muscleTargets: [{ part: 'pectoralis_clavicular', role: 'primary', emphasis: 'biased' }, { part: 'pectoralis_sternocostal', role: 'primary', emphasis: 'shared' }, { part: 'deltoid_anterior', role: 'secondary', emphasis: 'shared' }], biasNotes: 'Incline angle changes expected emphasis.' },
-  { id: 'front', name: 'Front Raise', primaryMuscle: 'shoulders', secondaryMuscles: [], equipment: 'cable',
+  { id: 'front', name: 'Front Raise', primaryMuscle: 'anterior delt', secondaryMuscles: [], equipment: 'cable',
     muscleTargets: [{ part: 'deltoid_anterior', role: 'primary', emphasis: 'biased' }] },
-  { id: 'side', name: 'Lateral Raise', primaryMuscle: 'shoulders', secondaryMuscles: [], equipment: 'dumbbell',
+  { id: 'side', name: 'Lateral Raise', primaryMuscle: 'lateral delt', secondaryMuscles: [], equipment: 'dumbbell',
     muscleTargets: [{ part: 'deltoid_lateral', role: 'primary', emphasis: 'biased' }] },
   { id: 'legacy', name: 'Saved Front Raise', primaryMuscle: 'anterior delt', secondaryMuscles: [], equipment: 'cable' },
+  { id: 'unknown', name: 'Saved Press', primaryMuscle: 'shoulders', secondaryMuscles: [], equipment: 'dumbbell' },
 ];
 
 beforeEach(() => {
@@ -24,7 +25,7 @@ function picker(props = {}) { return render(<ExercisePicker catalog={catalog} on
 describe('exercise muscle filtering', () => {
   it('filters specific parts in both primary and secondary roles and resets the part when changing group', () => {
     picker();
-    fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: 'shoulders' } });
+    fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: 'anterior delt' } });
     expect(screen.getByRole('checkbox', { name: 'Saved Front Raise' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Muscle part'), { target: { value: 'deltoid_anterior' } });
     expect(screen.getAllByRole('checkbox')).toHaveLength(2);
@@ -60,7 +61,7 @@ describe('exercise muscle filtering', () => {
 
   it('clears part filters along with text and group filters', () => {
     picker();
-    fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: 'shoulders' } });
+    fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: 'posterior delt' } });
     fireEvent.change(screen.getByLabelText('Muscle part'), { target: { value: 'deltoid_posterior' } });
     fireEvent.change(screen.getByLabelText('Search exercises'), { target: { value: 'missing' } });
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
@@ -77,6 +78,20 @@ describe('exercise muscle filtering', () => {
     expect(screen.getByText('Primary parts')).toBeTruthy();
     expect(screen.getByText('Secondary parts')).toBeTruthy();
   });
+
+  it('offers three delt groups and keeps unspecified legacy sets out of each head filter', () => {
+    picker();
+    const options = within(screen.getByLabelText('Muscle group'));
+    expect(options.queryByRole('option', { name: 'shoulders' })).toBeNull();
+    for (const head of ['anterior delt', 'lateral delt', 'posterior delt']) {
+      expect(options.getByRole('option', { name: head })).toBeTruthy();
+      fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: head } });
+      expect(screen.queryByRole('checkbox', { name: 'Saved Press' })).toBeNull();
+    }
+    fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: 'lateral delt' } });
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: 'Lateral Raise' })).toBeTruthy();
+  });
 });
 
 describe('saved exercise muscle labels', () => {
@@ -90,11 +105,29 @@ describe('saved exercise muscle labels', () => {
     expect(screen.getByText(/not isolation or measured activation/)).toBeTruthy();
   });
 
-  it('normalizes legacy shoulder labels without inventing historical head detail', () => {
+  it('retains an explicitly named legacy delt head without inventing part detail', () => {
     render(<MuscleLabels exercise={catalog[3]}/>);
-    expect(screen.getByLabelText('Primary muscle: shoulders')).toBeTruthy();
+    expect(screen.getByLabelText('Primary muscle: anterior delt')).toBeTruthy();
     expect(screen.getByText(/Part detail unavailable/)).toBeTruthy();
     expect(screen.queryByText(/Deltoid/)).toBeNull();
     expect(screen.queryByText('Muscle parts & emphasis')).toBeNull();
+  });
+
+  it('identifies a missing historical delt head without showing a generic group', () => {
+    render(<MuscleLabels exercise={catalog[4]}/>);
+    expect(screen.getByLabelText('Primary muscle: Delt head unspecified')).toBeTruthy();
+    expect(screen.queryByText('shoulders')).toBeNull();
+    expect(screen.queryByLabelText('Primary muscle: anterior delt')).toBeNull();
+  });
+
+  it('uses explicit saved parts to split a former generic group into multiple delt chips', () => {
+    render(<MuscleLabels exercise={{ ...catalog[4], muscleTargets: [
+      { part: 'deltoid_anterior', role: 'primary', emphasis: 'biased' },
+      { part: 'deltoid_lateral', role: 'primary', emphasis: 'shared' },
+    ] }}/>);
+    expect(screen.getByLabelText('Primary muscle: anterior delt')).toBeTruthy();
+    expect(screen.getByLabelText('Primary muscle: lateral delt')).toBeTruthy();
+    expect(screen.queryByText('Delt head unspecified')).toBeNull();
+    expect(screen.queryByText('shoulders')).toBeNull();
   });
 });

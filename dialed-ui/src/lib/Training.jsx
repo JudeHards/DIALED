@@ -7,7 +7,7 @@ import { useAuth } from './Auth';
 const TrainingContext = createContext(null);
 // Older cached catalogues lack muscle targets. Start from the bundled catalogue
 // until a current catalogue has been fetched; workout snapshots stay untouched.
-const catalogCacheKey = 'catalog:muscle-targets:v1';
+const catalogCacheKey = 'catalog:delt-groups:v2';
 const browserTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 export function TrainingProvider({ children }) {
   const { user } = useAuth(); const userId = user.id;

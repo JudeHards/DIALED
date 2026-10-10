@@ -9,6 +9,9 @@ of an individual's muscle activation, fatigue, effective volume, or growth.
 
 - `primaryMuscle` and `secondaryMuscles` retain broad groups for navigation and
   group-level reporting. A target's `role` must agree with its broad group.
+  Deltoids use three independent groups: `anterior delt`, `lateral delt` and
+  `posterior delt`; there is no combined `shoulders` group. Shoulder presses use
+  anterior delts as primary with lateral delts and triceps as secondary targets.
 - `muscleTargets[].part` identifies a tracked muscle, anatomical head, or useful
   region. Not every part is literally a separate anatomical head.
 - `emphasis: 'biased'` identifies a useful emphasis within the primary group.

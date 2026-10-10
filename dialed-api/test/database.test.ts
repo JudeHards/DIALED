@@ -17,6 +17,7 @@ describe.sequential('production persistence migration', () => {
   let migratedCatalog: CatalogExercise[];
   let legacySaved: Workout;
   let legacyCompleted: Workout;
+  let legacyDetailed: Workout;
   const legacyDraft = workout();
   const legacyMutationId = randomUUID();
   beforeAll(async () => {
@@ -38,6 +39,11 @@ describe.sequential('production persistence migration', () => {
         await db.query('insert into exercises(id, data) values ($1, $2::jsonb)', [bench.id, JSON.stringify(bench)]);
         legacySaved = await saveWorkout(legacyDraft, legacyMutationId);
         legacyCompleted = await saveWorkout(workout({ status: 'completed', completedAt: '2026-10-07T11:00:00.000Z' }));
+      }
+      if (migration === '202610100001_delt_groups.sql') {
+        const detailed = workout({ status: 'completed', completedAt: '2026-10-07T11:00:00.000Z' });
+        detailed.exercises[0].snapshot = structuredClone(currentBench);
+        legacyDetailed = await saveWorkout(detailed);
       }
       await db.exec(await readFile(resolve('../supabase/migrations', migration), 'utf8'));
     }
@@ -67,6 +73,9 @@ describe.sequential('production persistence migration', () => {
     expect(legacySaved.exercises[0].snapshot).toEqual(bench);
     expect(workoutSchema.parse(await getWorkout(legacySaved.id))).toEqual(legacySaved);
     expect(workoutSchema.parse(await getWorkout(legacyCompleted.id))).toEqual(legacyCompleted);
+    expect(legacyDetailed.exercises[0].snapshot.secondaryMuscles).toContain('shoulders');
+    expect(legacyDetailed.exercises[0].snapshot.muscleTargets?.length).toBeGreaterThan(0);
+    expect(workoutSchema.parse(await getWorkout(legacyDetailed.id))).toEqual(legacyDetailed);
     expect(await saveWorkout(legacyDraft, legacyMutationId)).toEqual(legacySaved);
     const edited = structuredClone(legacySaved);
     edited.exercises[0].snapshot = structuredClone(currentBench);
@@ -86,6 +95,56 @@ describe.sequential('production persistence migration', () => {
     expect(await getWorkout(saved.id)).toEqual(saved);
     expect(saved.exercises[0].snapshot.muscleTargets?.length).toBeGreaterThan(0);
     expect((await db.query('select * from public.exercise_sets where session_exercise_id = $1', [draft.exercises[0].id])).rows).toHaveLength(3);
+  });
+
+  it('keeps missing targets and broad delt history when legacy offline workouts first sync', async () => {
+    const draft = workout({ status: 'completed', completedAt: '2026-10-07T11:00:00.000Z' });
+    draft.exercises[0].snapshot.name = 'Untrusted client exercise name';
+    draft.exercises[0].snapshot.primaryMuscle = 'core';
+    draft.exercises[0].snapshot.biasNotes = 'Unrecorded head bias';
+    const mutationId = randomUUID();
+    const saved = await saveWorkout(draft, mutationId);
+    expect(saved.exercises[0].snapshot).toEqual(bench);
+    expect(saved.exercises[0].snapshot).not.toHaveProperty('muscleTargets');
+    expect(saved.exercises[0].snapshot).not.toHaveProperty('biasNotes');
+    expect(workoutSchema.parse(saved)).toEqual(saved);
+    expect(await saveWorkout(draft, mutationId)).toEqual(saved);
+  });
+
+  it('collapses unspecified delt roles without duplicating a broad primary or inventing secondary head detail', async () => {
+    const currentPress = exercises.find(exercise => exercise.id === 'ex_ohp')!;
+    const press = workout();
+    press.exercises[0].exerciseId = currentPress.id;
+    press.exercises[0].snapshot = { ...currentPress, primaryMuscle: 'shoulders', secondaryMuscles: ['triceps'] };
+    delete press.exercises[0].snapshot.muscleTargets;
+    delete press.exercises[0].snapshot.biasNotes;
+    const savedPress = await saveWorkout(press);
+    expect(savedPress.exercises[0].snapshot).toMatchObject({ primaryMuscle: 'shoulders', secondaryMuscles: ['triceps'] });
+    expect(workoutSchema.parse(savedPress)).toEqual(savedPress);
+
+    const currentRow = exercises.find(exercise => exercise.id === 'ex_barbell_row')!;
+    const row = workout();
+    row.exercises[0].exerciseId = currentRow.id;
+    row.exercises[0].snapshot = { ...currentRow, secondaryMuscles: ['biceps'] };
+    delete row.exercises[0].snapshot.muscleTargets;
+    delete row.exercises[0].snapshot.biasNotes;
+    const savedRow = await saveWorkout(row);
+    expect(savedRow.exercises[0].snapshot.secondaryMuscles).toEqual(['biceps', 'shoulders']);
+    expect(savedRow.exercises[0].snapshot).not.toHaveProperty('muscleTargets');
+    expect(workoutSchema.parse(savedRow)).toEqual(savedRow);
+  });
+
+  it('preserves an explicit legacy anterior-delt group without manufacturing part-level targets', async () => {
+    const currentRaise = exercises.find(exercise => exercise.id === 'ex_anterior_delt_raise_cable')!;
+    const draft = workout();
+    draft.exercises[0].exerciseId = currentRaise.id;
+    draft.exercises[0].snapshot = { ...currentRaise, primaryMuscle: 'anterior delt' };
+    delete draft.exercises[0].snapshot.muscleTargets;
+    delete draft.exercises[0].snapshot.biasNotes;
+    const saved = await saveWorkout(draft);
+    expect(saved.exercises[0].snapshot.primaryMuscle).toBe('anterior delt');
+    expect(saved.exercises[0].snapshot).not.toHaveProperty('muscleTargets');
+    expect(workoutSchema.parse(saved)).toEqual(saved);
   });
 
   it('retries are idempotent and conflicting or reused mutation IDs never overwrite a saved draft', async () => {
@@ -163,7 +222,13 @@ describe.sequential('production persistence migration', () => {
       changed.exercises[0].snapshot.muscleTargets = draft.exercises[0].snapshot.muscleTargets;
       const updated = await saveWorkout(changed);
       expect(updated.exercises[0].snapshot).toEqual(currentBench);
-      expect((await saveWorkout(workout())).exercises[0].snapshot).toEqual(revisedBench);
+      const stripped = structuredClone(updated);
+      delete stripped.exercises[0].snapshot.muscleTargets;
+      delete stripped.exercises[0].snapshot.biasNotes;
+      expect((await saveWorkout(stripped)).exercises[0].snapshot).toEqual(currentBench);
+      const fresh = workout();
+      fresh.exercises[0].snapshot = structuredClone(currentBench);
+      expect((await saveWorkout(fresh)).exercises[0].snapshot).toEqual(revisedBench);
     } finally { await db.query('update exercises set data = $1::jsonb where id = $2', [JSON.stringify(currentBench), bench.id]); }
   });
 

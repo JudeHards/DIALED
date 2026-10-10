@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { muscles, muscleParts, musclePartDetails, normalizeMuscleGroup } from '@dialed/shared';
+import { muscles, muscleParts, musclePartDetails, exerciseMuscleGroups } from '@dialed/shared';
 
 export function MuscleLabels({ exercise }) {
   const targets = (exercise.muscleTargets ?? []).filter(target => musclePartDetails[target.part]);
   const biased = targets.filter(target => target.emphasis === 'biased');
-  const primaryGroup = normalizeMuscleGroup(exercise.primaryMuscle);
-  const secondaryGroups = [...new Set((exercise.secondaryMuscles ?? []).map(normalizeMuscleGroup))].filter(group => group !== primaryGroup);
+  const groups = exerciseMuscleGroups(exercise);
   return <div className="exercise-muscles">
-    <div className="muscle-labels"><span aria-label={`Primary muscle: ${primaryGroup}`}>{primaryGroup}</span>{secondaryGroups.map(group => <span className="secondary-muscle" key={group} aria-label={`Secondary muscle: ${group}`}>{group}</span>)}</div>
+    <div className="muscle-labels">
+      {groups.primary.map(group => <span key={group} aria-label={`Primary muscle: ${group}`}>{group}</span>)}
+      {groups.unassignedDelts.primary && <span aria-label="Primary muscle: Delt head unspecified">Delt head unspecified</span>}
+      {groups.secondary.map(group => <span className="secondary-muscle" key={group} aria-label={`Secondary muscle: ${group}`}>{group}</span>)}
+      {groups.unassignedDelts.secondary && <span className="secondary-muscle" aria-label="Secondary muscle: Delt head unspecified">Delt head unspecified</span>}
+    </div>
     {targets.length ? <>
       {biased.length > 0 && <p className="muscle-emphasis"><span>Expected bias:</span> {biased.map(target => musclePartDetails[target.part].label).join(' · ')}</p>}
       <details className="muscle-part-details">
@@ -41,10 +45,11 @@ export default function ExercisePicker({ catalog, onAdd, onClose, limit = 50 }) 
   const query = search.trim().toLowerCase();
   const filtered = catalog.filter(exercise => {
     const targets = exercise.muscleTargets ?? [];
-    const groups = [exercise.primaryMuscle, ...(exercise.secondaryMuscles ?? []), ...targets.map(target => musclePartDetails[target.part]?.group)].filter(Boolean).map(normalizeMuscleGroup);
+    const mapped = exerciseMuscleGroups(exercise);
+    const groups = [...mapped.primary, ...mapped.secondary];
     const matchesGroup = muscle === 'all' || groups.includes(muscle);
     const matchesPart = part === 'all' || targets.some(target => target.part === part);
-    const searchText = [exercise.name, ...groups, ...targets.map(target => musclePartDetails[target.part]?.label)].join(' ').toLowerCase();
+    const searchText = [exercise.name, ...groups, ...targets.map(target => musclePartDetails[target.part]?.label), mapped.unassignedDelts.primary || mapped.unassignedDelts.secondary ? 'delt head unspecified' : ''].join(' ').toLowerCase();
     return matchesGroup && matchesPart && query.split(/\s+/).every(term => searchText.includes(term));
   });
   function clearFilters() { setSearch(''); setMuscle('all'); setPart('all'); }

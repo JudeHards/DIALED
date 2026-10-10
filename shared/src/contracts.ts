@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { muscles, musclePartIds, musclePartDetails, normalizeMuscleGroup } from './muscles';
+import { muscles, musclePartIds, musclePartDetails, deltGroups, type MuscleGroup } from './muscles';
 
 export { muscles } from './muscles';
 // The old label remains valid for saved snapshots and queued offline mutations.
-export const muscleSchema = z.enum([...muscles, 'anterior delt']);
+export const muscleSchema = z.enum([...muscles, 'shoulders']);
 export const muscleTargetSchema = z.object({
   part: z.enum(musclePartIds),
   role: z.enum(['primary', 'secondary']),
@@ -21,8 +21,11 @@ export const catalogSchema = z.object({
   muscleTargets: z.array(muscleTargetSchema).min(1).max(musclePartIds.length).optional(),
   biasNotes: z.string().trim().min(1).max(1000).optional(),
 }).strict().superRefine((exercise, ctx) => {
-  const primary = normalizeMuscleGroup(exercise.primaryMuscle);
-  const secondary = exercise.secondaryMuscles.map(normalizeMuscleGroup);
+  const primary = exercise.primaryMuscle;
+  const secondary = exercise.secondaryMuscles;
+  // Older detailed snapshots used one combined group. Validate their recorded
+  // targets without rewriting them or treating it as a current catalog group.
+  const matches = (group: MuscleGroup | 'shoulders', partGroup: MuscleGroup) => group === partGroup || (group === 'shoulders' && deltGroups.includes(partGroup));
   if (secondary.includes(primary) || new Set(secondary).size !== secondary.length) {
     ctx.addIssue({ code: 'custom', message: 'Muscle groups must be distinct', path: ['secondaryMuscles'] });
   }
@@ -32,7 +35,7 @@ export const catalogSchema = z.object({
     if (parts.has(target.part)) ctx.addIssue({ code: 'custom', message: 'Muscle parts must be unique', path: ['muscleTargets', index, 'part'] });
     parts.add(target.part);
     const group = musclePartDetails[target.part].group;
-    if (target.role === 'primary' ? group !== primary : !secondary.includes(group)) {
+    if (target.role === 'primary' ? !matches(primary, group) : !secondary.some(secondaryGroup => matches(secondaryGroup, group))) {
       ctx.addIssue({ code: 'custom', message: 'Muscle part role must match its broad muscle group', path: ['muscleTargets', index, 'role'] });
     }
     if (target.emphasis === 'biased' && target.role !== 'primary') {
@@ -43,7 +46,7 @@ export const catalogSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Include at least one primary muscle part', path: ['muscleTargets'] });
   }
   for (const group of secondary) {
-    if (!exercise.muscleTargets.some(target => musclePartDetails[target.part].group === group)) {
+    if (!exercise.muscleTargets.some(target => target.role === 'secondary' && matches(group, musclePartDetails[target.part].group))) {
       ctx.addIssue({ code: 'custom', message: `Include a muscle part for secondary group ${group}`, path: ['muscleTargets'] });
     }
   }

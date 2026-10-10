@@ -1,5 +1,7 @@
 /** Broad groups are used for set totals; parts describe expected exercise involvement. */
-export const muscles = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'forearms', 'quads', 'hamstrings', 'glutes', 'adductors', 'calves', 'shins', 'core', 'rotator cuff'] as const;
+import type { CatalogExercise } from './contracts';
+
+export const muscles = ['chest', 'back', 'anterior delt', 'lateral delt', 'posterior delt', 'biceps', 'triceps', 'forearms', 'quads', 'hamstrings', 'glutes', 'adductors', 'calves', 'shins', 'core', 'rotator cuff'] as const;
 export type MuscleGroup = typeof muscles[number];
 
 // Keep useful training distinctions. Lats and spinal erectors are grouped because
@@ -14,9 +16,9 @@ export const musclePartDetails = {
   triceps_medial_head: { label: 'Triceps · medial head', group: 'triceps' },
   wrist_flexors: { label: 'Wrist flexors', group: 'forearms' },
   wrist_extensors: { label: 'Wrist extensors', group: 'forearms' },
-  deltoid_anterior: { label: 'Deltoid · anterior (front)', group: 'shoulders' },
-  deltoid_lateral: { label: 'Deltoid · lateral (side)', group: 'shoulders' },
-  deltoid_posterior: { label: 'Deltoid · posterior (rear)', group: 'shoulders' },
+  deltoid_anterior: { label: 'Deltoid · anterior (front)', group: 'anterior delt' },
+  deltoid_lateral: { label: 'Deltoid · lateral (side)', group: 'lateral delt' },
+  deltoid_posterior: { label: 'Deltoid · posterior (rear)', group: 'posterior delt' },
   supraspinatus: { label: 'Supraspinatus', group: 'rotator cuff' },
   infraspinatus: { label: 'Infraspinatus', group: 'rotator cuff' },
   teres_minor: { label: 'Teres minor', group: 'rotator cuff' },
@@ -61,7 +63,27 @@ export type MusclePartId = keyof typeof musclePartDetails;
 export const musclePartIds = Object.keys(musclePartDetails) as [MusclePartId, ...MusclePartId[]];
 export const muscleParts = musclePartIds.map(id => ({ id, ...musclePartDetails[id] }));
 
-/** Only normalize the old group label; never infer missing historical part data. */
-export function normalizeMuscleGroup(muscle: MuscleGroup | 'anterior delt'): MuscleGroup {
-  return muscle === 'anterior delt' ? 'shoulders' : muscle;
+export const deltGroups: readonly MuscleGroup[] = ['anterior delt', 'lateral delt', 'posterior delt'];
+
+/** A legacy combined group cannot be assigned to a specific head without evidence. */
+export function normalizeMuscleGroup(muscle: MuscleGroup | 'shoulders'): MuscleGroup | null {
+  return muscle === 'shoulders' ? null : muscle;
+}
+
+/** Resolve only saved anatomy; never borrow a newer exercise's targets for history. */
+export function exerciseMuscleGroups(exercise: Pick<CatalogExercise, 'primaryMuscle' | 'secondaryMuscles' | 'muscleTargets'>) {
+  const unassignedDelts = { primary: false, secondary: false };
+  const resolve = (group: MuscleGroup | 'shoulders', role: 'primary' | 'secondary'): MuscleGroup[] => {
+    const normalized = normalizeMuscleGroup(group);
+    if (normalized) return [normalized];
+    const recorded = (exercise.muscleTargets ?? [])
+      .filter(target => target.role === role)
+      .map(target => musclePartDetails[target.part].group)
+      .filter(group => deltGroups.includes(group));
+    if (!recorded.length) unassignedDelts[role] = true;
+    return recorded;
+  };
+  const primary = [...new Set(resolve(exercise.primaryMuscle, 'primary'))];
+  const secondary = [...new Set(exercise.secondaryMuscles.flatMap(group => resolve(group, 'secondary')))].filter(group => !primary.includes(group));
+  return { primary, secondary, unassignedDelts };
 }

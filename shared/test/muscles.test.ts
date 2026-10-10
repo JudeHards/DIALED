@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import {
   catalogSchema, exercises, muscleParts, weeklySummary, workoutSchema,
-  defaultPrescription, type CatalogExercise, type Workout,
+  defaultPrescription, muscles, type CatalogExercise, type Workout,
 } from '../src';
 
 function workout(snapshot: CatalogExercise, sets = 3): Workout {
@@ -23,6 +23,8 @@ describe('detailed exercise catalogue', () => {
     for (const exercise of exercises) {
       expect(catalogSchema.safeParse(exercise), exercise.id).toMatchObject({ success: true });
       expect(exercise.muscleTargets?.length, exercise.id).toBeGreaterThan(0);
+      expect(exercise.primaryMuscle).not.toBe('shoulders');
+      expect(exercise.secondaryMuscles).not.toContain('shoulders');
     }
     expect(find('ex_step_up')).toMatchObject({ laterality: 'unilateral', primaryMuscle: 'quads' });
     expect(find('ex_step_up').muscleTargets).toEqual(expect.arrayContaining([
@@ -57,6 +59,44 @@ describe('detailed exercise catalogue', () => {
 });
 
 describe('head and region set accounting', () => {
+  it('tracks the three delt groups independently for presses and raises', () => {
+    const summary = summaryFor(workout(find('ex_ohp')), workout(find('ex_lateral_raise_db'), 2), workout(find('ex_rear_delt_fly_db'), 4));
+    expect(muscles).not.toContain('shoulders');
+    expect(summary.counts.find(row => row.muscle === 'anterior delt')).toMatchObject({ primarySets: 3, secondarySets: 0 });
+    expect(summary.counts.find(row => row.muscle === 'lateral delt')).toMatchObject({ primarySets: 2, secondarySets: 3 });
+    expect(summary.counts.find(row => row.muscle === 'posterior delt')).toMatchObject({ primarySets: 4, secondarySets: 0 });
+    expect(summary.totalWorkingSets).toBe(9);
+    expect(summary.unassignedDeltSets).toEqual({ primarySets: 0, secondarySets: 0 });
+  });
+
+  it('resolves old combined groups using saved parts while counting each physical set only once', () => {
+    const old = structuredClone(find('ex_ohp'));
+    old.primaryMuscle = 'shoulders';
+    old.secondaryMuscles = ['triceps'];
+    old.muscleTargets = old.muscleTargets!.map(target => target.part === 'deltoid_lateral' ? { ...target, role: 'primary' } : target);
+    const history = workoutSchema.parse(workout(old));
+    const before = JSON.stringify(history);
+    const summary = summaryFor(history);
+    expect(summary.counts.find(row => row.muscle === 'anterior delt')?.primarySets).toBe(3);
+    expect(summary.counts.find(row => row.muscle === 'lateral delt')?.primarySets).toBe(3);
+    expect(summary.counts.find(row => row.muscle === 'posterior delt')?.primarySets).toBe(0);
+    expect(summary.totalWorkingSets).toBe(3);
+    expect(summary.unassignedDeltSets.primarySets).toBe(0);
+    expect(JSON.stringify(history)).toBe(before);
+  });
+
+  it('keeps unspecified historical delt work in the session total without guessing its head', () => {
+    const old = structuredClone(find('ex_lateral_raise_db'));
+    old.primaryMuscle = 'shoulders'; delete old.muscleTargets; delete old.biasNotes;
+    const oldBench = structuredClone(find('ex_bench_barbell'));
+    oldBench.secondaryMuscles = ['triceps', 'shoulders']; delete oldBench.muscleTargets; delete oldBench.biasNotes;
+    const summary = summaryFor(workoutSchema.parse(workout(old)), workoutSchema.parse(workout(oldBench, 2)));
+    expect(summary.totalWorkingSets).toBe(5);
+    expect(summary.unassignedDeltSets).toEqual({ primarySets: 3, secondarySets: 2 });
+    expect(summary.counts.filter(row => row.muscle.endsWith('delt')).every(row => row.primarySets === 0 && row.secondarySets === 0)).toBe(true);
+    expect(summary.unmappedSets).toBe(5);
+  });
+
   it('counts heads separately while counting each set once for the broad group', () => {
     const summary = summaryFor(workout(find('ex_incline_db')), workout(find('ex_bench_barbell'), 2));
     expect(summary.counts.find(row => row.muscle === 'chest')).toMatchObject({ primarySets: 5, secondarySets: 0 });

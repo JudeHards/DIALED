@@ -24,7 +24,8 @@ export default function WeeklyMuscles({ summary, timezone }) {
         </div>
       </details>;
     })}</div>
-    {!!summary.unmappedSets && <p className="notice muscle-coverage">Part detail unavailable for {summary.unmappedSets} working {summary.unmappedSets === 1 ? 'set' : 'sets'} saved without muscle parts. Group totals still include these sets.</p>}
-    <p className="muted small-text">Completed working sets only. Biased sets are included in primary counts and describe expected emphasis, not measured activation. A set can involve several parts, so part counts overlap. {timezone}.</p>
+    {!!summary.unmappedSets && <p className="notice muscle-coverage">Part detail unavailable for {summary.unmappedSets} working {summary.unmappedSets === 1 ? 'set' : 'sets'} saved without muscle parts. These sets remain in your weekly working set total.</p>}
+    {!!(summary.unassignedDeltSets?.primarySets || summary.unassignedDeltSets?.secondarySets) && <p className="notice muscle-coverage">Delt head unspecified: {summary.unassignedDeltSets.primarySets} primary {summary.unassignedDeltSets.primarySets === 1 ? 'set' : 'sets'} and {summary.unassignedDeltSets.secondarySets} secondary {summary.unassignedDeltSets.secondarySets === 1 ? 'set' : 'sets'} from older workouts. These sets remain in your weekly working set total without being assigned to a delt head.</p>}
+    <p className="muted small-text">Completed working sets only. Biased sets are included in primary counts and describe expected emphasis, not measured activation. A set can involve several groups or parts, so group and part counts overlap. {timezone}.</p>
   </section>;
 }

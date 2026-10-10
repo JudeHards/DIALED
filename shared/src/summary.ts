@@ -1,5 +1,5 @@
 import type { Workout } from './contracts';
-import { muscles, muscleParts, normalizeMuscleGroup } from './muscles';
+import { muscles, muscleParts, exerciseMuscleGroups } from './muscles';
 function localDate(date: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
   return ['year', 'month', 'day'].map(type => parts.find(p => p.type === type)!.value).join('-');
@@ -14,16 +14,20 @@ export function weeklySummary(history: Workout[], timezone: string, now = new Da
   const partCounts = muscleParts.map(({ id: part, label, group }) => ({ part, label, group, primarySets: 0, secondarySets: 0, biasedSets: 0 }));
   const partIndex = new Map(partCounts.map(item => [item.part, item]));
   let unmappedSets = 0;
+  let totalWorkingSets = 0;
+  const unassignedDeltSets = { primarySets: 0, secondarySets: 0 };
   for (const w of history) {
     if (w.status !== 'completed' || !w.completedAt) continue;
     const day = localDate(new Date(w.completedAt), timezone);
     if (day < start || day >= endExclusive) continue;
     for (const e of w.exercises) {
       const count = e.sets.filter(s => s.completed && s.weight !== null && s.reps !== null && !s.warmup).length;
-      const primary = normalizeMuscleGroup(e.snapshot.primaryMuscle);
-      const secondary = e.snapshot.secondaryMuscles.map(normalizeMuscleGroup);
+      totalWorkingSets += count;
+      const { primary, secondary, unassignedDelts } = exerciseMuscleGroups(e.snapshot);
+      if (unassignedDelts.primary) unassignedDeltSets.primarySets += count;
+      if (unassignedDelts.secondary) unassignedDeltSets.secondarySets += count;
       for (const item of counts) {
-        if (primary === item.muscle) item.primarySets += count;
+        if (primary.includes(item.muscle)) item.primarySets += count;
         else if (secondary.includes(item.muscle)) item.secondarySets += count;
       }
       if (!e.snapshot.muscleTargets?.length) unmappedSets += count;
@@ -41,5 +45,5 @@ export function weeklySummary(history: Workout[], timezone: string, now = new Da
       }
     }
   }
-  return { start, endExclusive, timezone, counts, partCounts, unmappedSets };
+  return { start, endExclusive, timezone, counts, partCounts, unmappedSets, totalWorkingSets, unassignedDeltSets };
 }

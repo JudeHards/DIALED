@@ -31,6 +31,8 @@ In a new Supabase project's SQL Editor, run the SQL files in `supabase/migration
 
 Existing installations need `202610090002_muscle_targets.sql` to install the expanded catalogue and target metadata. It updates catalogue rows only; historical workout snapshots are preserved. Future catalogue updates can generate both the seed and a new migration after building shared: `node scripts/seed.cjs --migration YYYYMMDDNNNN_catalog_update.sql`. This command refuses to overwrite an existing migration.
 
+Apply `202610100001_delt_groups.sql` and `202610100002_legacy_snapshot_coverage.sql` next to split current exercises into anterior, lateral, and posterior delt groups and preserve missing detail when older offline workouts first sync. Older broad shoulder entries remain unassigned to a head; previously recorded snapshots and retry results stay unchanged.
+
 In Supabase Authentication → URL Configuration, set Site URL to `http://localhost:5173` for local development and allow `http://localhost:5173/**` for verification and password-reset callbacks. If using `127.0.0.1`, add that origin too. Keep email confirmation enabled. Production needs its own HTTPS URLs and a configured mail provider for dependable email delivery.
 
 Start each server in a separate terminal:
@@ -54,7 +56,7 @@ This builds all three workspaces, lints the API/frontend, and runs the tests. CI
 
 ## Saving and recovery
 
-The API verifies the bearer token and uses that user's Supabase access for all queries. Routine starts copy the prescription into a separate session. The database captures authoritative exercise targets when an exercise is first saved and preserves that snapshot when catalogue metadata changes. Older snapshots without specific targets remain readable and count toward muscle groups; the app does not infer historical head biases from today's catalogue. Versions reject conflicting device saves, and repeated mutation IDs replay their original result without duplicating a workout. Completed sessions are read-only.
+The API verifies the bearer token and uses that user's Supabase access for all queries. Routine starts copy the prescription into a separate session. The database captures authoritative exercise targets when an exercise with target metadata is first saved and preserves that snapshot when catalogue metadata changes. Older snapshots without specific targets remain readable, including offline workouts reaching the server for the first time; the app does not infer historical head biases from today's catalogue. Broad shoulder history is reported as unassigned instead of being attributed to a delt head. Versions reject conflicting device saves, and repeated mutation IDs replay their original result without duplicating a workout. Completed sessions are read-only.
 
 The UI first saves sessions in IndexedDB, then syncs while signed in on launch, reconnect, focus, and periodic retries. A routine save interrupted after submission can also be retried with its original mutation ID. Routines and preferences require connectivity. Expired authentication preserves drafts for the same account; switching accounts does not expose another account's queue. Conflict controls retain an archive before choosing the cloud version, keeping local edits, or making a separate copy. Settings provides exports and reviewed recovery of earlier local-storage records.
 

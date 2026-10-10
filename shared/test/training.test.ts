@@ -56,12 +56,12 @@ describe('weekly muscle summary', () => {
     expect(weeklySummary([],'America/New_York',new Date('2026-11-01T12:00:00Z')).start).toBe('2026-10-26');
   });
   it('excludes unfinished sessions',()=>{const w=session();w.status='in_progress';w.completedAt=null;expect(weeklySummary([w],'UTC',new Date('2026-10-07')).counts[0].primarySets).toBe(0);});
-  it('accepts legacy anterior delt snapshots and rolls them into shoulders without inventing part detail', () => {
+  it('accepts legacy anterior delt snapshots without inventing additional part detail', () => {
     const raise = { ...exercises.find(e => e.id === 'ex_anterior_delt_raise_cable')!, primaryMuscle: 'anterior delt' as const, muscleTargets: undefined };
     const w = session({ ...exercise(), exerciseId: raise.id, snapshot: raise });
     expect(workoutSchema.safeParse(w).success).toBe(true);
     const summary = weeklySummary([w], 'Europe/Dublin', new Date('2026-10-07T12:00:00Z'));
-    expect(summary.counts.find(c => c.muscle === 'shoulders')).toMatchObject({ primarySets: 3, secondarySets: 0 });
+    expect(summary.counts.find(c => c.muscle === 'anterior delt')).toMatchObject({ primarySets: 3, secondarySets: 0 });
     expect(summary.partCounts.find(c => c.part === 'deltoid_anterior')).toMatchObject({ primarySets: 0, secondarySets: 0, biasedSets: 0 });
     expect(summary.unmappedSets).toBe(3);
   });

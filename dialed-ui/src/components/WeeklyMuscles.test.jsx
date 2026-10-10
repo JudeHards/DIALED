@@ -25,7 +25,7 @@ describe('weekly muscle detail', () => {
     const upper = within(chestTable).getByRole('row', { name: 'Pectoralis major · clavicular (upper) 2 0 2' });
     expect(within(upper).getAllByRole('cell').map(cell => cell.textContent)).toEqual(['2', '0', '2']);
     expect(within(chestTable).getByRole('row', { name: 'Pectoralis major · sternocostal (mid/lower) 2 0 0' })).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('shoulders: 1 primary sets, 2 secondary sets; show muscle parts'));
+    fireEvent.click(screen.getByLabelText('anterior delt: 1 primary sets, 2 secondary sets; show muscle parts'));
     expect(screen.getByRole('row', { name: 'Deltoid · anterior (front) 0 2 0' })).toBeTruthy();
     expect(screen.getByText(/part counts overlap/)).toBeTruthy();
   });
@@ -44,5 +44,19 @@ describe('weekly muscle detail', () => {
     expect(screen.getByLabelText('chest: 0 primary sets, 0 secondary sets; show muscle parts')).toBeTruthy();
     expect(screen.queryByText(/Part detail unavailable/)).toBeNull();
     expect(screen.getByText(/Completed working sets only/)).toBeTruthy();
+  });
+
+  it('shows all three delt groups and identifies old sets with an unspecified head', () => {
+    const summary = weeklySummary([{ status: 'completed', completedAt: '2026-10-07T12:00:00Z', exercises: [
+      { snapshot: { primaryMuscle: 'shoulders', secondaryMuscles: [] }, sets: [set, set] },
+      { snapshot: { primaryMuscle: 'chest', secondaryMuscles: ['shoulders'] }, sets: [set] },
+    ] }], 'Europe/Dublin', new Date('2026-10-09T12:00:00Z'));
+    render(<WeeklyMuscles summary={summary} timezone="Europe/Dublin"/>);
+    for (const head of ['anterior delt', 'lateral delt', 'posterior delt']) {
+      expect(screen.getByLabelText(`${head}: 0 primary sets, 0 secondary sets; show muscle parts`)).toBeTruthy();
+    }
+    expect(screen.queryByText('shoulders')).toBeNull();
+    expect(screen.getByText(/Delt head unspecified: 2 primary sets and 1 secondary set/)).toBeTruthy();
+    expect(screen.getByText(/These sets remain in your weekly working set total\.$/)).toBeTruthy();
   });
 });
