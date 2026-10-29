@@ -18,11 +18,53 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = vi.fn(function () { this.setAttribute('open', ''); });
   HTMLDialogElement.prototype.close = vi.fn(function () { this.removeAttribute('open'); });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function picker(props = {}) { return render(<ExercisePicker catalog={catalog} onAdd={() => {}} onClose={() => {}} {...props}/>); }
 
 describe('exercise muscle filtering', () => {
+  it('follows the visible viewport, distinguishes keyboard space from zoom, and removes listeners', () => {
+    const viewport = Object.assign(new EventTarget(), { height: 800, offsetTop: 0, scale: 1 });
+    const removeListener = vi.spyOn(viewport, 'removeEventListener');
+    vi.stubGlobal('innerHeight', 800);
+    vi.stubGlobal('visualViewport', viewport);
+    const { unmount } = picker();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.style.getPropertyValue('--picker-viewport-height')).toBe('800px');
+    expect(dialog.style.getPropertyValue('--picker-viewport-top')).toBe('0px');
+    viewport.height = 460;
+    viewport.offsetTop = 24;
+    viewport.dispatchEvent(new Event('resize'));
+    expect(dialog.style.getPropertyValue('--picker-viewport-height')).toBe('460px');
+    expect(dialog.classList.contains('picker-keyboard-open')).toBe(true);
+    viewport.dispatchEvent(new Event('scroll'));
+    expect(dialog.style.getPropertyValue('--picker-viewport-top')).toBe('24px');
+    viewport.scale = 2;
+    viewport.dispatchEvent(new Event('resize'));
+    expect(dialog.classList.contains('picker-keyboard-open')).toBe(false);
+    viewport.scale = 1;
+    viewport.height = 800;
+    viewport.dispatchEvent(new Event('resize'));
+    expect(dialog.classList.contains('picker-keyboard-open')).toBe(false);
+    unmount();
+    expect(removeListener.mock.calls.map(([name]) => name)).toEqual(['resize', 'scroll']);
+    viewport.height = 300;
+    viewport.dispatchEvent(new Event('resize'));
+    expect(dialog.style.getPropertyValue('--picker-viewport-height')).toBe('800px');
+  });
+
+  it('opens without focusing the search field and lets Enter dismiss the keyboard', () => {
+    picker();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Add exercises' }));
+    const search = screen.getByLabelText('Search exercises');
+    search.focus();
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(document.activeElement).not.toBe(search);
+  });
+
   it('filters specific parts in both primary and secondary roles and resets the part when changing group', () => {
     picker();
     fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: 'anterior delt' } });
@@ -57,6 +99,28 @@ describe('exercise muscle filtering', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add 2 exercises' }));
     expect(onAdd).toHaveBeenCalledWith([catalog[0], catalog[2]]);
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('clears the search without losing selected exercises or the muscle filter', () => {
+    picker();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Incline Press' }));
+    fireEvent.change(screen.getByLabelText('Muscle group'), { target: { value: 'chest' } });
+    fireEvent.change(screen.getByLabelText('Search exercises'), { target: { value: 'incline' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(screen.getByLabelText('Search exercises').value).toBe('');
+    expect(screen.getByLabelText('Muscle group').value).toBe('chest');
+    expect(screen.getByRole('checkbox', { name: 'Incline Press' }).checked).toBe(true);
+    expect(document.activeElement).toBe(screen.getByLabelText('Search exercises'));
+  });
+
+  it('disables further selection at the limit and allows deselection', () => {
+    picker({ limit: 1 });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Incline Press' }));
+    expect(screen.getByRole('checkbox', { name: 'Front Raise' }).disabled).toBe(true);
+    expect(screen.getByRole('status').textContent).toContain('Limit reached');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Incline Press' }));
+    expect(screen.getByRole('checkbox', { name: 'Front Raise' }).disabled).toBe(false);
+    expect(screen.getByRole('button', { name: 'Select exercises to add' }).disabled).toBe(true);
   });
 
   it('clears part filters along with text and group filters', () => {

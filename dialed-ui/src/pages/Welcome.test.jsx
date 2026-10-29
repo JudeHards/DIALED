@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
+import { exercises } from '@dialed/shared';
 
 const mocks = vi.hoisted(() => ({ training: {} }));
 vi.mock('react-router-dom', () => ({ Link: ({ children, to }) => <a href={to}>{children}</a> }));
@@ -27,5 +28,24 @@ describe('overview working set totals', () => {
     expect(screen.getByLabelText('lateral delt: 2 primary sets, 0 secondary sets; show muscle parts')).toBeTruthy();
     expect(screen.getByText(/Delt head unspecified: 1 primary set and 0 secondary sets/)).toBeTruthy();
     expect(screen.queryByText('shoulders')).toBeNull();
+  });
+});
+
+describe('continuing a workout', () => {
+  const session = (name, hoursAgo, weight) => ({ id: name, state: 'synced', workout: { id: name, name, status: 'in_progress', startedAt: new Date(Date.now() - hoursAgo * 3600000).toISOString(), completedAt: null,
+    exercises: [{ snapshot: exercises[0], sets: [{ weight, reps: null, rir: null, completed: false, warmup: false }] }] } });
+  it('offers only the current session and hides abandoned empty ones', () => {
+    mocks.training = { timezone: 'Europe/Dublin', routines: [], rows: [session('Empty start', 1, null), session('Leg day', 20, 60), session('Old junk', 30, null)] };
+    render(<Welcome/>);
+    expect(screen.getByText(/Continue workout/).closest('a').getAttribute('href')).toBe('/start-workout/Leg day');
+    expect(screen.getByText('Leg day')).toBeTruthy();
+    expect(screen.queryByText('Empty start')).toBeNull();
+    expect(screen.queryByText('Old junk')).toBeNull();
+  });
+  it('starts a new workout when nothing is in progress', () => {
+    mocks.training = { timezone: 'Europe/Dublin', routines: [], rows: [session('Old junk', 30, null)] };
+    render(<Welcome/>);
+    expect(screen.getByText(/Start a workout/).closest('a').getAttribute('href')).toBe('/start-workout');
+    expect(screen.queryByText('Continue your workout')).toBeNull();
   });
 });

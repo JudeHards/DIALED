@@ -25,7 +25,7 @@ describe('weekly muscle detail', () => {
     const upper = within(chestTable).getByRole('row', { name: 'Pectoralis major · clavicular (upper) 2 0 2' });
     expect(within(upper).getAllByRole('cell').map(cell => cell.textContent)).toEqual(['2', '0', '2']);
     expect(within(chestTable).getByRole('row', { name: 'Pectoralis major · sternocostal (mid/lower) 2 0 0' })).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('anterior delt: 1 primary sets, 2 secondary sets; show muscle parts'));
+    fireEvent.click(screen.getByLabelText('anterior delt: 1 primary set, 2 secondary sets; show muscle parts'));
     expect(screen.getByRole('row', { name: 'Deltoid · anterior (front) 0 2 0' })).toBeTruthy();
     expect(screen.getByText(/part counts overlap/)).toBeTruthy();
   });

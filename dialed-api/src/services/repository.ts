@@ -20,6 +20,7 @@ export interface Repository {
   workouts(): Promise<Workout[]>;
   workout(id: string): Promise<Workout>;
   saveWorkout(doc: Workout, version: number, mutationId: string): Promise<Workout>;
+  deleteWorkout(id: string, version: number): Promise<void>;
   profile(): Promise<{ timezone: string } | null>;
   saveProfile(timezone: string): Promise<{ timezone: string }>;
 }
@@ -70,6 +71,9 @@ export class SupabaseRepository implements Repository {
   async saveWorkout(doc: Workout, version: number, mutationId: string) {
     const { data, error } = await this.db.rpc('save_workout', { p_document: doc, p_expected_version: version, p_mutation_id: mutationId }); dbError(error);
     return workoutSchema.parse(data);
+  }
+  async deleteWorkout(id: string, version: number) {
+    const { error } = await this.db.rpc('delete_workout', { p_id: id, p_expected_version: version }); dbError(error);
   }
   async profile() {
     const { data, error } = await this.db.from('profiles').select('timezone').eq('user_id', this.userId).maybeSingle(); dbError(error); return data;

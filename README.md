@@ -10,6 +10,7 @@ An installable workout log: React/Vite frontend, Express/TypeScript API, shared 
 
 - Email/password accounts, verification, password recovery, and sign-out.
 - Reusable routines and independent workout sessions, editable prescriptions, completed sets, optional reps in reserve, warm-ups, and history/detail views.
+- One workout in progress at a time. Starting again resumes it; starting a routine replaces it only if nothing has been entered. Empty sessions are discarded automatically once a newer session exists or after six hours, and any unfinished session can be discarded from its page. Completed workouts cannot be discarded.
 - Durable, account-owned database records with row-level security. Atomic saves use stable mutation IDs and optimistic versions; completing a workout updates the same session.
 - Account-scoped IndexedDB drafts, cached data, reconnect/startup retries, and conflict recovery. Legacy local-storage records remain untouched and require reviewed import in Settings.
 - An expanded exercise catalogue, including Step Ups, with snapshots of primary/secondary muscles and specific heads or regions. Weekly summaries track muscle groups, specific parts, and exercise biases from completed working sets in completed sessions, Monday–Sunday in the saved timezone. Biases describe an exercise's intended emphasis; set counts do not measure activation or guarantee isolation of a head.
@@ -32,6 +33,8 @@ In a new Supabase project's SQL Editor, run the SQL files in `supabase/migration
 Existing installations need `202610090002_muscle_targets.sql` to install the expanded catalogue and target metadata. It updates catalogue rows only; historical workout snapshots are preserved. Future catalogue updates can generate both the seed and a new migration after building shared: `node scripts/seed.cjs --migration YYYYMMDDNNNN_catalog_update.sql`. This command refuses to overwrite an existing migration.
 
 Apply `202610100001_delt_groups.sql` and `202610100002_legacy_snapshot_coverage.sql` next to split current exercises into anterior, lateral, and posterior delt groups and preserve missing detail when older offline workouts first sync. Older broad shoulder entries remain unassigned to a head; previously recorded snapshots and retry results stay unchanged.
+
+Apply `202610280001_discard_workouts.sql` to let unfinished sessions be discarded. Until it is applied, discarded sessions stay hidden on the device and their server deletion keeps retrying.
 
 In Supabase Authentication → URL Configuration, set Site URL to `http://localhost:5173` for local development and allow `http://localhost:5173/**` for verification and password-reset callbacks. If using `127.0.0.1`, add that origin too. Keep email confirmation enabled. Production needs its own HTTPS URLs and a configured mail provider for dependable email delivery.
 

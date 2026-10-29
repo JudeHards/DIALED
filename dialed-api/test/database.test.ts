@@ -170,6 +170,23 @@ describe.sequential('production persistence migration', () => {
     expect((await db.query('select id from workouts where id = $1', [saved.id])).rows).toHaveLength(1);
   });
 
+  it('discards only the owner’s unfinished session at its current version, and retries succeed', async () => {
+    const discard = (id: string, version: number, user = userA) => asUser(user, () => db.query('select public.delete_workout($1, $2)', [id, version]));
+    const saved = await saveWorkout(workout());
+    await discard(saved.id, saved.version, userB);
+    expect(await getWorkout(saved.id)).not.toBeNull();
+    const updated = await saveWorkout({ ...saved, name: 'Logged elsewhere' });
+    await expect(discard(saved.id, saved.version)).rejects.toMatchObject({ code: 'PT409' });
+    await discard(saved.id, updated.version);
+    expect(await getWorkout(saved.id)).toBeNull();
+    expect((await db.query('select id from session_exercises where workout_id = $1', [saved.id])).rows).toHaveLength(0);
+    await discard(saved.id, updated.version);
+    const finished = await saveWorkout({ ...await saveWorkout(workout()), status: 'completed', completedAt: '2026-10-07T11:00:00.000Z' });
+    await expect(discard(finished.id, finished.version)).rejects.toMatchObject({ code: '22023' });
+    expect(await getWorkout(finished.id)).not.toBeNull();
+    await expect(discard(finished.id, finished.version, '')).rejects.toMatchObject({ code: '42501' });
+  });
+
   it('RLS isolates parents, children, profiles and document RPCs between accounts', async () => {
     const saved = await saveWorkout(workout());
     const savedRoutine = await saveRoutine(routine());

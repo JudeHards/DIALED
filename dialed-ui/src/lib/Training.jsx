@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { exercises } from '@dialed/shared';
 import { apiFor } from './api';
-import { cached, drafts, mergeRemote, syncDrafts } from './offline';
+import { cached, discardAbandoned, drafts, mergeRemote, syncDrafts } from './offline';
 import { useAuth } from './Auth';
 
 const TrainingContext = createContext(null);
@@ -31,15 +31,18 @@ export function TrainingProvider({ children }) {
   const refresh = useCallback(() => {
     if (refreshing.current) return refreshing.current;
     const run = async () => {
+      // Discard abandoned empty sessions first so this refresh's sync deletes them too.
+      await discardAbandoned(userId);
       await readLocal();
       if (!navigator.onLine) return;
       try {
         await syncDrafts(userId, api);
+        const settled = new Set((await drafts(userId)).filter(row => row.state === 'synced').map(row => row.id));
         const results = await Promise.allSettled([api.exercises(), api.routines(), api.workouts(), api.profile()]);
         const [catalogResult, routineResult, workoutResult, profileResult] = results;
         if (catalogResult.status === 'fulfilled') await cached(userId, catalogCacheKey, catalogResult.value);
         if (routineResult.status === 'fulfilled') await cached(userId, 'routines', routineResult.value);
-        if (workoutResult.status === 'fulfilled') await mergeRemote(userId, workoutResult.value);
+        if (workoutResult.status === 'fulfilled') await mergeRemote(userId, workoutResult.value, settled);
         if (profileResult.status === 'fulfilled') {
           const profile = profileResult.value ?? await api.saveProfile(browserTimezone());
           await cached(userId, 'profile', profile);

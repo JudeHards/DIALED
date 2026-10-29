@@ -1,5 +1,6 @@
 import { openDB } from 'idb';
 import { workoutSchema } from '@dialed/shared';
+import { inProgress } from './models';
 
 let dbPromise;
 export function database() {
@@ -27,8 +28,12 @@ export async function cached(userId, key, value) {
   }
   return (await db.get('cache', [userId, key]))?.value;
 }
-export async function drafts(userId) {
+async function records(userId) {
   requireUser(userId); return (await database()).getAllFromIndex('drafts', 'user', userId);
+}
+// Discarded sessions stay on the device only until the server confirms their deletion.
+export async function drafts(userId) {
+  return (await records(userId)).filter(row => row.state !== 'discarded');
 }
 export async function draft(userId, id) {
   requireUser(userId); return (await database()).get('drafts', [userId, id]);
@@ -46,7 +51,9 @@ export async function saveDraft(userId, workout) {
   };
   await tx.store.put(next); await tx.done; changed(userId); return next;
 }
-export async function mergeRemote(userId, workouts) {
+// `settled` holds IDs that were synced before the list was fetched. If one of those
+// unfinished sessions is missing from the list, another device discarded it.
+export async function mergeRemote(userId, workouts, settled = new Set()) {
   requireUser(userId);
   const db = await database(); const tx = db.transaction('drafts', 'readwrite');
   for (const workout of workouts) {
@@ -55,7 +62,21 @@ export async function mergeRemote(userId, workouts) {
       await tx.store.put({ userId, id: workout.id, workout, serverVersion: workout.version, revision: old?.revision ?? 0, state: 'synced', error: null });
     }
   }
+  const remote = new Set(workouts.map(workout => workout.id));
+  for (const row of await tx.store.index('user').getAll(userId)) {
+    if (row.state === 'synced' && row.workout.status === 'in_progress' && settled.has(row.id) && !remote.has(row.id)) await tx.store.delete([userId, row.id]);
+  }
   await tx.done; changed(userId);
+}
+// Hides the session at once; syncDrafts deletes the server copy, then this record.
+export async function discardDraft(userId, id) {
+  requireUser(userId);
+  await updateRecord(userId, id, current => ({ ...current, state: 'discarded', error: null }));
+}
+export async function discardAbandoned(userId) {
+  const { abandoned } = inProgress(await drafts(userId));
+  for (const row of abandoned) await discardDraft(userId, row.id);
+  return abandoned.length;
 }
 async function updateRecord(userId, id, fn) {
   const db = await database(); const tx = db.transaction('drafts', 'readwrite');
@@ -65,12 +86,43 @@ async function updateRecord(userId, id, fn) {
   await tx.done; changed(userId); return next;
 }
 const running = new Map();
-const blockedStates = new Set(['synced', 'conflict', 'invalid']);
+const blockedStates = new Set(['synced', 'conflict', 'invalid', 'discarded']);
+const rejectedStatuses = new Set([400, 404, 413, 422]);
+// Returns false when the outcome is uncertain, so the caller stops and retries later.
+async function sendDiscard(userId, api, id) {
+  const row = await draft(userId, id);
+  if (row?.state !== 'discarded') return true;
+  try {
+    let version = row.serverVersion;
+    if (row.pending) {
+      // A save whose response was lost may have committed; replaying it reveals the server version.
+      try {
+        const { revision: _revision, ...payload } = row.pending;
+        version = workoutSchema.parse(await api.saveWorkout(payload)).version;
+      } catch (error) { if (!rejectedStatuses.has(error.status)) throw error; }
+    }
+    if (version > 0) await api.deleteWorkout(id, version);
+    const db = await database(); const tx = db.transaction('drafts', 'readwrite');
+    if ((await tx.store.get([userId, id]))?.state === 'discarded') await tx.store.delete([userId, id]);
+    await tx.done; changed(userId);
+    return true;
+  } catch (error) {
+    if (error.status === 400 || error.status === 409) {
+      // Another device logged to or completed it: keep this copy for review rather than delete it.
+      await updateRecord(userId, id, current => current.state !== 'discarded' ? current
+        : { ...current, state: 'conflict', pending: null, error: 'This workout changed on another device, so it wasn’t discarded. Your local version is retained.' });
+      return true;
+    }
+    console.info(JSON.stringify({ event: 'sync_failure', status: error.status ?? 'offline' }));
+    return false;
+  }
+}
 export function syncDrafts(userId, api) {
   requireUser(userId);
   if (running.has(userId)) return running.get(userId);
   const run = async () => {
-    for (const row of await drafts(userId)) {
+    const rows = await records(userId);
+    for (const row of rows.filter(row => row.state !== 'discarded')) {
       // Drain edits made while a request was in flight, including completion. Bound
       // each pass so continuous typing cannot monopolize the background worker.
       for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -90,6 +142,8 @@ export function syncDrafts(userId, api) {
           if (saved.id !== row.id || saved.version <= batch.expectedVersion) throw new Error('The server returned an unexpected workout response. Your draft is retained.');
           const next = await updateRecord(userId, row.id, current => {
             if (current.pending?.mutationId !== batch.mutationId) return current;
+            // Discarded mid-request: the deletion needs the version this save created.
+            if (current.state === 'discarded') return { ...current, serverVersion: saved.version, pending: null };
             const unchanged = current.revision === batch.revision;
             return {
               ...current, workout: unchanged ? saved : { ...current.workout, version: saved.version }, serverVersion: saved.version,
@@ -100,7 +154,8 @@ export function syncDrafts(userId, api) {
         } catch (error) {
           await updateRecord(userId, row.id, current => {
             if (current.pending?.mutationId !== batch.mutationId) return current;
-            const rejected = error.status === 400 || error.status === 404 || error.status === 413 || error.status === 422;
+            const rejected = rejectedStatuses.has(error.status);
+            if (current.state === 'discarded') return { ...current, pending: rejected ? null : current.pending };
             return {
               ...current,
               state: error.status === 409 ? 'conflict' : rejected ? 'invalid' : 'pending',
@@ -114,6 +169,10 @@ export function syncDrafts(userId, api) {
           break;
         }
       }
+    }
+    // Deletions run last so one that keeps failing never holds back saving a workout.
+    for (const row of rows.filter(row => row.state === 'discarded')) {
+      if (!await sendDiscard(userId, api, row.id)) return;
     }
   };
   const promise = (typeof navigator !== 'undefined' && navigator.locks

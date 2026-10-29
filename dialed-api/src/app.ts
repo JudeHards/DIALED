@@ -72,6 +72,10 @@ export function createApp(options: { authenticate?: Authenticate; explanations?:
   };
   app.put('/api/workouts/:id', async (req, res) => res.json(await save(req, res.locals.context)));
   app.post('/api/workouts/:id/complete', async (req, res) => res.json(await save(req, res.locals.context, true)));
+  app.delete('/api/workouts/:id', async (req, res) => {
+    const version = z.object({ expectedVersion: z.number().int().positive() }).strict().parse(req.body).expectedVersion;
+    await (res.locals.context as Context).repo.deleteWorkout(idSchema.parse(req.params.id), version); res.status(204).end();
+  });
   async function decision(req: Request, context: Context) {
     const workout = await context.repo.workout(idSchema.parse(req.params.id));
     const exercise = workout.exercises.find(e => e.id === req.params.exerciseId);

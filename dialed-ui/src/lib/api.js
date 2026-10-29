@@ -90,6 +90,7 @@ export function apiFor(userId) {
       await cached(userId, `routineMutation:${routine.id}`, null);
     }),
     saveWorkout: payload => write(`/workouts/${payload.workout.id}${payload.workout.status === 'completed' ? '/complete' : ''}`, payload, payload.workout.status === 'completed' ? 'POST' : 'PUT'),
+    deleteWorkout: (id, expectedVersion) => write(`/workouts/${id}`, { expectedVersion }, 'DELETE'),
     recommendation: (id, exerciseId) => get(`/workouts/${id}/exercises/${exerciseId}/recommendation`),
     explain: (id, exerciseId) => write(`/workouts/${id}/exercises/${exerciseId}/explanation`, {}, 'POST'),
     weeklySummary: () => get('/summary/weekly'),

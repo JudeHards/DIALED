@@ -12,7 +12,7 @@ function repository(): Repository {
     catalog: vi.fn(async () => [bench]), routines: vi.fn(async () => []), routine: vi.fn(async () => routine()),
     saveRoutine: vi.fn(async doc => ({ ...doc, version: doc.version + 1 })), deleteRoutine: vi.fn(async () => undefined),
     workouts: vi.fn(async () => []), workout: vi.fn(async () => workout()),
-    saveWorkout: vi.fn(async doc => ({ ...doc, version: doc.version + 1 })),
+    saveWorkout: vi.fn(async doc => ({ ...doc, version: doc.version + 1 })), deleteWorkout: vi.fn(async () => undefined),
     profile: vi.fn(async () => ({ timezone: 'Europe/Dublin' })), saveProfile: vi.fn(async timezone => ({ timezone })),
   };
 }
@@ -128,6 +128,18 @@ describe('HTTP authentication, validation and route wiring', () => {
     vi.mocked(repo.saveWorkout).mockRejectedValueOnce(new HttpError(409, 'Workout changed on another device'));
     const conflict = await request(app).put(`/api/workouts/${draft.id}`).set(auth).send(payload(draft));
     expect(conflict.status).toBe(409); expect(conflict.body.error).toContain('another device');
+  });
+
+  it('discards an unfinished session only with its expected version', async () => {
+    const draft = workout({ version: 2 });
+    const deleted = await request(app).delete(`/api/workouts/${draft.id}`).set(auth).send({ expectedVersion: 2 });
+    expect(deleted.status).toBe(204); expect(repo.deleteWorkout).toHaveBeenCalledWith(draft.id, 2);
+    expect((await request(app).delete(`/api/workouts/${draft.id}`).set(auth).send({})).status).toBe(400);
+    expect((await request(app).delete('/api/workouts/not-a-uuid').set(auth).send({ expectedVersion: 2 })).status).toBe(400);
+    vi.mocked(repo.deleteWorkout).mockRejectedValueOnce(new HttpError(409, 'Workout changed on another device'));
+    expect((await request(app).delete(`/api/workouts/${draft.id}`).set(auth).send({ expectedVersion: 1 })).status).toBe(409);
+    expect((await request(app).delete(`/api/workouts/${draft.id}`).send({ expectedVersion: 2 })).status).toBe(401);
+    expect(repo.deleteWorkout).toHaveBeenCalledTimes(2);
   });
 
   it('wires routine create, edit, start and delete using stable session IDs', async () => {

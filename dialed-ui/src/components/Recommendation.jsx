@@ -26,13 +26,16 @@ export default function Recommendation({ workout, exercise, onApply, synced = tr
     } finally { setPending(value => value === signature ? null : value); }
   }
 
-  if (!decision) return <aside className="recommendation"><p>Enter valid targets above to see your next working weight.</p></aside>;
-  return <aside className="recommendation" aria-label={`Load recommendation for ${exercise.snapshot.name}`}>
-    <div className="row between"><span className="eyebrow">NEXT WORKING WEIGHT</span><span className="recommendation-action">{decision.action === 'unsupported' ? 'Manual' : decision.action}</span></div>
-    <div className="row between wrap"><strong>{decision.proposedKg === null ? decision.action === 'unsupported' ? 'Choose your starting load' : 'Build your baseline' : `${decision.proposedKg} kg`}</strong>{decision.proposedKg !== null && <button className="button small" disabled={!canApply} onClick={() => onApply(decision.proposedKg)}>{canApply ? 'Apply to empty sets' : 'Working weights entered'}</button>}</div>
-    <p>{explanation?.explanation ?? decision.reason}</p>
+  if (!decision) return <aside className="recommendation"><details className="recommendation-disclosure"><summary>Weight suggestion</summary><p>Check your targets above to see a suggested working weight.</p></details></aside>;
+  const actionLabel = { baseline: 'Starting point', hold: 'Keep weight', increase: 'Increase', decrease: 'Reduce', unsupported: 'Choose weight' }[decision.action];
+  return <aside className="recommendation" aria-label={`Weight suggestion for ${exercise.snapshot.name}`}>
+    <details className="recommendation-disclosure"><summary>Weight suggestion{decision.proposedKg !== null && <strong> · {decision.proposedKg} kg</strong>}<span className="recommendation-action">{actionLabel}</span></summary>
+    <div className="recommendation-content">
+    <div className="row between wrap"><strong>{decision.proposedKg === null ? decision.action === 'unsupported' ? 'Choose your working weight' : 'Find your starting weight' : `${decision.proposedKg} kg`}</strong>{decision.proposedKg !== null && <button type="button" className="button small" disabled={!canApply} onClick={() => onApply(decision.proposedKg)}>{canApply ? 'Fill empty weights' : 'Weights already entered'}</button>}</div>
+    <p aria-live="polite">{explanation?.explanation ?? decision.reason}</p>
     {decision.evidence.length > 0 && <details><summary>Previous performance{decision.previousKg !== null ? ` · ${decision.previousKg} kg` : ''}</summary>{decision.evidence.map(evidence => <p key={evidence.sessionId}>{new Date(evidence.completedAt).toLocaleDateString()}: {evidence.sets.map(set => `${set.weight} kg × ${set.reps}${set.rir !== null ? ` (${set.rir} RIR)` : ''}`).join(' · ')}</p>)}</details>}
-    {online && workout.version > 0 && synced && <button className="text-button" disabled={busy || explanation?.source === 'ai'} onClick={explain}>{busy ? 'Explaining…' : explanation?.source === 'ai' ? 'AI explanation shown' : 'Explain with AI'}</button>}
-    <small className="muted">{explanation?.source === 'ai' ? 'AI explains the calculated decision.' : 'Calculated from your completed working sets.'}</small>
+    {online && workout.version > 0 && synced && <button type="button" className="text-button" disabled={busy || explanation?.source === 'ai'} onClick={explain}>{busy ? 'Explaining…' : explanation?.source === 'ai' ? 'AI explanation shown' : 'Explain with AI'}</button>}
+    <small className="muted">{explanation?.source === 'ai' ? 'AI explains how this weight was calculated.' : 'Based on your logged working sets.'}</small>
+    </div></details>
   </aside>;
 }
